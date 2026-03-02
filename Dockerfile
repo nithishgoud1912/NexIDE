@@ -42,7 +42,7 @@ RUN npm run build
 # ------ Stage 3: Production runner ------
 FROM node:20-slim AS runner
 
-# Install minimal runtime deps for node-pty
+# Install runtime deps for node-pty (native module)
 RUN apt-get update && apt-get install -y \
     python3 \
     make \
@@ -63,30 +63,13 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/server.js ./server.js
 COPY --from=builder /app/pty-server.js ./pty-server.js
 
-# Copy Prisma generated client
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
-
-# Copy node-pty native bindings
-COPY --from=builder /app/node_modules/node-pty ./node_modules/node-pty
-
-# Copy socket.io (needed by unified server)
-COPY --from=builder /app/node_modules/socket.io ./node_modules/socket.io
-COPY --from=builder /app/node_modules/socket.io-adapter ./node_modules/socket.io-adapter
-COPY --from=builder /app/node_modules/socket.io-parser ./node_modules/socket.io-parser
-COPY --from=builder /app/node_modules/engine.io ./node_modules/engine.io
-COPY --from=builder /app/node_modules/engine.io-parser ./node_modules/engine.io-parser
-COPY --from=builder /app/node_modules/ws ./node_modules/ws
-COPY --from=builder /app/node_modules/cors ./node_modules/cors
-COPY --from=builder /app/node_modules/vary ./node_modules/vary
-COPY --from=builder /app/node_modules/object-assign ./node_modules/object-assign
-COPY --from=builder /app/node_modules/@socket.io ./node_modules/@socket.io
-
-# Copy chokidar (needed for file watching)
-COPY --from=builder /app/node_modules/chokidar ./node_modules/chokidar
-
-# Copy package.json for project type scanning
+# Install ALL production dependencies (socket.io, node-pty, chokidar, prisma, etc.)
+# This is more reliable than cherry-picking individual packages
 COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/package-lock.json ./package-lock.json
+COPY --from=builder /app/scripts/ ./scripts/
+COPY --from=builder /app/prisma/ ./prisma/
+RUN npm ci --omit=dev && npx prisma generate
 
 # Expose the port (Render sets PORT env var)
 EXPOSE 3000
