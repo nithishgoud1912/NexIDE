@@ -10,12 +10,7 @@ const NEXT_PORT = process.env.PORT || 3000;
 const io = new Server(3001, {
   cors: {
     // Only allow connections from the Next.js dev server (localhost)
-    origin: [
-      `http://localhost:${NEXT_PORT}`,
-      `http://127.0.0.1:${NEXT_PORT}`,
-      "http://localhost:3000",
-      "http://127.0.0.1:3000",
-    ],
+    origin: ["http://localhost:3000", "https://nexide.onrender.com"],
     methods: ["GET", "POST"],
     credentials: true,
   },
