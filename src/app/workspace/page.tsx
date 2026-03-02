@@ -1166,12 +1166,14 @@ function WorkspaceContent() {
     <div className="h-screen flex flex-col bg-[#09090b] text-zinc-300 overflow-hidden font-sans selection:bg-blue-500/30">
       <header className="h-10 border-b border-white/5 flex items-center justify-between px-3 bg-[#09090b]/80 backdrop-blur-md z-30 select-none">
         <div className="flex items-center gap-4">
-          <Link
-            href="/dashboard"
+          <button
+            onClick={() => {
+              window.location.href = "/dashboard";
+            }}
             className="p-2 hover:bg-white/5 rounded-lg transition-colors group"
           >
             <ChevronLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" />
-          </Link>
+          </button>
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-600/20">
               <Code2 className="w-5 h-5 text-white" />
