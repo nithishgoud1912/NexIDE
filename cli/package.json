@@ -1,0 +1,20 @@
+{
+  "name": "nexide-cli",
+  "version": "1.0.0",
+  "description": "The local server for NexIDE to enable native terminal and local file access",
+  "main": "index.js",
+  "bin": {
+    "nexide": "./index.js"
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "chokidar": "^3.6.0",
+    "node-pty": "^1.1.0",
+    "socket.io": "^4.8.3",
+    "open": "^8.4.2"
+  },
+  "author": "NexIDE",
+  "license": "MIT"
+}
