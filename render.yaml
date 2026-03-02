@@ -1,0 +1,28 @@
+# Render Blueprint — Infrastructure as Code
+# https://docs.render.com/blueprint-spec
+#
+# Deploy: Push to GitHub → Render auto-detects this file
+# Or: Dashboard → New → Blueprint → Connect repo
+
+services:
+  - type: web
+    name: nexide
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: DATABASE_URL
+        sync: false  # Set manually in Render dashboard
+      - key: AUTH_SECRET
+        generateValue: true  # Auto-generate a secure random value
+      - key: AUTH_GITHUB_ID
+        sync: false
+      - key: AUTH_GITHUB_SECRET
+        sync: false
+      - key: GOOGLE_GENERATIVE_AI_API_KEY
+        sync: false
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"
+    healthCheckPath: /

@@ -78,9 +78,12 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
     if (typeof window === "undefined") return null;
     if (localSocketRef.current) return localSocketRef.current;
 
-    const ptyUrl = process.env.NEXT_PUBLIC_PTY_URL || "http://localhost:3001";
-    console.log(`[PTY Server] Connecting to ${ptyUrl} for types and sync...`);
-    const socket = io(ptyUrl);
+    // In production (Render), the PTY server runs on the same port as Next.js.
+    // Pass undefined/empty to socket.io-client to connect to the same origin.
+    // For local dev, set NEXT_PUBLIC_PTY_URL=http://localhost:3001
+    const ptyUrl = process.env.NEXT_PUBLIC_PTY_URL || "";
+    console.log(`[Shell] Connecting to PTY at ${ptyUrl || "(same origin)"}...`);
+    const socket = ptyUrl ? io(ptyUrl) : io();
     localSocketRef.current = socket;
 
     socket.on("connect", () => {
