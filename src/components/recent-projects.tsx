@@ -79,22 +79,22 @@ export function RecentProjectsList() {
 
   if (loading) {
     return (
-      <div className="bg-white/5 border border-white/10 rounded-2xl p-8 flex flex-col items-center justify-center space-y-3">
+      <div className="bg-card border border-border rounded-2xl p-8 flex flex-col items-center justify-center space-y-3">
         <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-        <span className="text-xs text-zinc-500">Loading your projects...</span>
+        <span className="text-xs text-muted-foreground">Loading your projects...</span>
       </div>
     );
   }
 
   if (projects.length === 0) {
     return (
-      <div className="bg-white/5 border border-white/10 rounded-2xl p-12 text-center space-y-4">
-        <div className="w-16 h-16 rounded-2xl bg-zinc-900 flex items-center justify-center text-zinc-700 mx-auto">
+      <div className="bg-card border border-border rounded-2xl p-12 text-center space-y-4">
+        <div className="w-16 h-16 rounded-2xl bg-accent flex items-center justify-center text-muted-foreground mx-auto">
           <FolderOpen className="w-8 h-8" />
         </div>
         <div>
-          <h4 className="text-zinc-300 font-medium">No recent projects</h4>
-          <p className="text-xs text-zinc-600 mt-1">
+          <h4 className="text-foreground font-medium">No recent projects</h4>
+          <p className="text-xs text-muted-foreground mt-1">
             Open a local folder to see it here.
           </p>
         </div>
@@ -111,7 +111,7 @@ export function RecentProjectsList() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-zinc-400 uppercase tracking-widest text-xs font-semibold">
+        <div className="flex items-center gap-2 text-muted-foreground uppercase tracking-widest text-xs font-semibold">
           <Clock className="w-4 h-4" />
           Recent Projects
         </div>
@@ -130,41 +130,41 @@ export function RecentProjectsList() {
               },
             });
           }}
-          className="text-[10px] text-zinc-600 hover:text-red-400 flex items-center gap-1 transition-colors"
+          className="text-[10px] text-muted-foreground hover:text-red-400 flex items-center gap-1 transition-colors"
         >
           <Trash2 className="w-3 h-3" />
           Clear History
         </button>
       </div>
 
-      <div className="bg-white/5 border border-white/10 rounded-2xl divide-y divide-white/5 overflow-hidden">
+      <div className="bg-card border border-border rounded-2xl divide-y divide-white/5 overflow-hidden">
         {projects.map((project) => (
           <div
             key={project.id}
             onClick={() => handleProjectClick(project)}
-            className="flex items-center justify-between p-4 hover:bg-white/5 transition-colors group cursor-pointer"
+            className="flex items-center justify-between p-4 hover:bg-card transition-colors group cursor-pointer"
           >
             <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-lg bg-[#111] border border-white/10 flex items-center justify-center group-hover:bg-blue-500/10 transition-colors">
-                <FolderOpen className="w-5 h-5 text-zinc-500 group-hover:text-blue-400" />
+              <div className="w-10 h-10 rounded-lg bg-accent border border-border flex items-center justify-center group-hover:bg-blue-500/10 transition-colors">
+                <FolderOpen className="w-5 h-5 text-muted-foreground group-hover:text-blue-400" />
               </div>
               <div>
-                <h4 className="font-medium text-zinc-200 group-hover:text-white flex items-center gap-2">
+                <h4 className="font-medium text-foreground group-hover:text-white flex items-center gap-2">
                   {project.name}
                   {project.repoUrl && (
-                    <span className="inline-flex items-center gap-1 text-[9px] text-zinc-500 bg-white/5 px-1.5 py-0.5 rounded border border-white/10 uppercase font-bold tracking-wider">
+                    <span className="inline-flex items-center gap-1 text-[9px] text-muted-foreground bg-card px-1.5 py-0.5 rounded border border-border uppercase font-bold tracking-wider">
                       <Github className="w-3 h-3" />
                       Git
                     </span>
                   )}
                 </h4>
-                <p className="text-[10px] text-zinc-600 truncate max-w-[200px] font-mono mt-0.5 uppercase tracking-tighter">
+                <p className="text-[10px] text-muted-foreground truncate max-w-[200px] font-mono mt-0.5 uppercase tracking-tighter">
                   ID: {project.id}
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <div className="text-xs text-zinc-500 group-hover:text-zinc-300 mr-2">
+              <div className="text-xs text-muted-foreground group-hover:text-foreground mr-2">
                 {getTimeAgo(project.lastOpened)}
               </div>
               <button
@@ -182,12 +182,12 @@ export function RecentProjectsList() {
                     },
                   });
                 }}
-                className="p-1.5 rounded-lg hover:bg-red-500/10 text-zinc-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
                 title="Remove from history"
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
-              <ChevronRight className="w-4 h-4 text-zinc-700 group-hover:text-zinc-400 transition-colors" />
+              <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-muted-foreground transition-colors" />
             </div>
           </div>
         ))}

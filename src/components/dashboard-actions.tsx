@@ -126,16 +126,16 @@ export function DashboardActions({ session }: { session: any }) {
     <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
       <button
         onClick={handleOpenLocalFolder}
-        className="group relative overflow-hidden bg-white/5 border border-white/10 p-6 rounded-2xl hover:bg-white/10 hover:border-blue-500/50 hover:shadow-[0_0_20px_rgba(59,130,246,0.1)] transition-all text-left w-full"
+        className="group relative overflow-hidden bg-card border border-border p-6 rounded-2xl hover:bg-accent hover:border-primary hover:shadow-[0_0_20px_rgba(59,130,246,0.1)] transition-all text-left w-full"
       >
         <div className="w-12 h-12 rounded-xl bg-blue-500/20 flex items-center justify-center text-blue-400 mb-4 group-hover:scale-110 transition-transform">
           <FolderOpen className="w-6 h-6" />
         </div>
-        <h3 className="text-lg font-semibold text-white">Open Local Folder</h3>
-        <p className="text-sm text-zinc-500 mt-1">
+        <h3 className="text-lg font-semibold text-foreground">Open Local Folder</h3>
+        <p className="text-sm text-muted-foreground mt-1">
           Select a folder from your local machine (recommended).
         </p>
-        <div className="absolute top-4 right-4 text-zinc-600 group-hover:text-blue-400 transition-colors">
+        <div className="absolute top-4 right-4 text-muted-foreground group-hover:text-blue-400 transition-colors">
           <ChevronRight className="w-5 h-5" />
         </div>
       </button>
@@ -150,16 +150,16 @@ export function DashboardActions({ session }: { session: any }) {
           }
           setShowGithubModal(true);
         }}
-        className="group relative overflow-hidden bg-white/5 border border-white/10 p-6 rounded-2xl hover:bg-white/10 hover:border-purple-500/50 hover:shadow-[0_0_20px_rgba(168,85,247,0.1)] transition-all text-left w-full"
+        className="group relative overflow-hidden bg-card border border-border p-6 rounded-2xl hover:bg-accent hover:border-primary hover:shadow-[0_0_20px_rgba(168,85,247,0.1)] transition-all text-left w-full"
       >
         <div className="w-12 h-12 rounded-xl bg-purple-500/20 flex items-center justify-center text-purple-400 mb-4 group-hover:scale-110 transition-transform">
           <Github className="w-6 h-6" />
         </div>
-        <h3 className="text-lg font-semibold text-white">Import from GitHub</h3>
-        <p className="text-sm text-zinc-500 mt-1">
+        <h3 className="text-lg font-semibold text-foreground">Import from GitHub</h3>
+        <p className="text-sm text-muted-foreground mt-1">
           Clone a repository directly from your GitHub account.
         </p>
-        <div className="absolute top-4 right-4 text-zinc-600 group-hover:text-purple-400 transition-colors">
+        <div className="absolute top-4 right-4 text-muted-foreground group-hover:text-purple-400 transition-colors">
           <ChevronRight className="w-5 h-5" />
         </div>
       </button>

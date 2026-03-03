@@ -260,6 +260,14 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
         cursor: "#000000",
         selection: "rgba(0,0,0,0.1)",
         black: "#000000",
+        yellow: "#b45309",
+        brightYellow: "#b45309",
+        green: "#15803d",
+        brightGreen: "#15803d",
+        cyan: "#0369a1",
+        brightCyan: "#0369a1",
+        white: "#000000",
+        brightWhite: "#000000",
       },
       dark: {
         // Modern Dark

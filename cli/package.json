@@ -1,5 +1,5 @@
 {
-  "name": "nexide-cli",
+  "name": "@nanigoud1912/nexide",
   "version": "1.0.0",
   "description": "The local server for NexIDE to enable native terminal and local file access",
   "main": "index.js",

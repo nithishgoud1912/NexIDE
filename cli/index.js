@@ -29,7 +29,9 @@ console.log(`
 setTimeout(() => {
   const url = "https://nexide.onrender.com";
   console.log(`\n\x1b[33m🚀 Opening NexIDE in your browser: ${url}\x1b[0m`);
-  console.log(`\x1b[90m(Keep this terminal window open while you code!)\x1b[0m\n`);
+  console.log(
+    `\x1b[90m(Keep this terminal window open while you code!)\x1b[0m\n`,
+  );
   open(url);
 }, 1000);
 
@@ -252,7 +254,9 @@ io.on("connection", (socket) => {
 
   socket.on("resize", ({ cols, rows }) => {
     if (ptyProcess) {
-      try { ptyProcess.resize(cols, rows); } catch (e) {}
+      try {
+        ptyProcess.resize(cols, rows);
+      } catch (e) {}
     }
   });
 
@@ -262,7 +266,7 @@ io.on("connection", (socket) => {
       setupPty(absolutePath);
       socket.emit("root-path", absolutePath);
     } else {
-      socket.emit("error", \`Project path does not exist: \${absolutePath}\`);
+      socket.emit("error", `Project path does not exist: ${absolutePath}`);
     }
   });
 

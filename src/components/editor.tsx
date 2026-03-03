@@ -525,7 +525,7 @@ export default function CodeEditor({
             acceptSuggestionOnCommitCharacter: true,
             tabCompletion: "on",
             wordBasedSuggestions: "allDocuments",
-            wordBasedSuggestionsOnlySameLanguage: false,
+            wordBasedSuggestionsOnlySameLanguage: true,
             snippetSuggestions: "inline",
             suggestSelection: "first",
             quickSuggestions: { other: true, comments: true, strings: true },

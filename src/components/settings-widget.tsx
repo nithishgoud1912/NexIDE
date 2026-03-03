@@ -165,14 +165,14 @@ export function SettingsWidget({ children }: SettingsWidgetProps) {
         <div className="p-2 space-y-1">
           {/* Section: Appearance */}
           <div className="p-2 space-y-3">
-            <div className="flex items-center gap-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">
+            <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
               <Monitor className="w-3 h-3" /> Appearance
             </div>
 
             <div className="flex items-center justify-between px-1">
               <div className="flex items-center gap-2">
-                <Monitor className="w-3.5 h-3.5 text-zinc-400" />
-                <Label className="text-xs text-zinc-300 font-normal">
+                <Monitor className="w-3.5 h-3.5 text-muted-foreground" />
+                <Label className="text-xs text-foreground font-normal">
                   App Theme
                 </Label>
               </div>
@@ -194,16 +194,16 @@ export function SettingsWidget({ children }: SettingsWidgetProps) {
 
             <div className="flex items-center justify-between px-1">
               <div className="flex items-center gap-2">
-                <Code2 className="w-3.5 h-3.5 text-zinc-400" />
-                <Label className="text-xs text-zinc-300 font-normal">
+                <Code2 className="w-3.5 h-3.5 text-muted-foreground" />
+                <Label className="text-xs text-foreground font-normal">
                   Editor Theme
                 </Label>
               </div>
               <Select value={theme} onValueChange={setTheme}>
-                <SelectTrigger className="h-7 w-[130px] bg-white/5 border-white/10 text-xs text-white">
+                <SelectTrigger className="h-7 w-[130px] bg-secondary border-border text-xs text-foreground">
                   <SelectValue placeholder="Select theme" />
                 </SelectTrigger>
-                <SelectContent className="bg-[#1e1e20] border-white/10 text-zinc-300">
+                <SelectContent className="bg-popover border-border text-foreground">
                   <SelectItem value="vs-dark">Modern Dark</SelectItem>
                   <SelectItem value="vs-light">Modern Light</SelectItem>
                   <SelectItem value="hc-black">High Contrast</SelectItem>
@@ -220,8 +220,8 @@ export function SettingsWidget({ children }: SettingsWidgetProps) {
 
             <div className="flex items-center justify-between px-1">
               <div className="flex items-center gap-2">
-                <Type className="w-3.5 h-3.5 text-zinc-400" />
-                <Label className="text-xs text-zinc-300 font-normal">
+                <Type className="w-3.5 h-3.5 text-muted-foreground" />
+                <Label className="text-xs text-foreground font-normal">
                   Font Size
                 </Label>
               </div>
@@ -244,20 +244,20 @@ export function SettingsWidget({ children }: SettingsWidgetProps) {
             </div>
           </div>
 
-          <Separator className="bg-white/5 mx-2" />
+          <Separator className="bg-secondary mx-2" />
 
           {/* Section: Editor */}
           <div className="p-2 space-y-3">
-            <div className="flex items-center gap-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">
+            <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
               <Save className="w-3 h-3" /> Editor
             </div>
 
-            <div className="flex items-center justify-between p-2 bg-white/5 border border-white/5 rounded-md">
+            <div className="flex items-center justify-between p-2 bg-secondary border border-border rounded-md">
               <div className="space-y-0.5">
-                <Label className="text-xs text-zinc-200 font-medium block">
+                <Label className="text-xs text-foreground font-medium block">
                   Auto Save
                 </Label>
-                <span className="text-[10px] text-zinc-500 block">
+                <span className="text-[10px] text-muted-foreground block">
                   Saves to WebContainer
                 </span>
               </div>
@@ -271,7 +271,7 @@ export function SettingsWidget({ children }: SettingsWidgetProps) {
             {isAutoSave && (
               <div className="px-2 py-1 space-y-2">
                 <div className="flex justify-between items-center text-[10px]">
-                  <span className="text-zinc-500 uppercase tracking-tighter">
+                  <span className="text-muted-foreground uppercase tracking-tighter">
                     Sync Latency
                   </span>
                   <span className="text-blue-400 font-mono">
@@ -286,7 +286,7 @@ export function SettingsWidget({ children }: SettingsWidgetProps) {
                   onValueChange={(val) => setAutoSaveDelay(val[0])}
                   className="py-1"
                 />
-                <p className="text-[9px] text-zinc-600 italic">
+                <p className="text-[9px] text-muted-foreground italic">
                   Higher latency prevents cursor jumps and sync race conditions.
                 </p>
               </div>
@@ -294,8 +294,8 @@ export function SettingsWidget({ children }: SettingsWidgetProps) {
 
             <div className="flex items-center justify-between px-1">
               <div className="flex items-center gap-2">
-                <List className="w-3.5 h-3.5 text-zinc-400" />
-                <Label className="text-xs text-zinc-300 font-normal">
+                <List className="w-3.5 h-3.5 text-muted-foreground" />
+                <Label className="text-xs text-foreground font-normal">
                   Line Numbers
                 </Label>
               </div>
@@ -308,8 +308,8 @@ export function SettingsWidget({ children }: SettingsWidgetProps) {
 
             <div className="flex items-center justify-between px-1">
               <div className="flex items-center gap-2">
-                <AlignLeft className="w-3.5 h-3.5 text-zinc-400" />
-                <Label className="text-xs text-zinc-300 font-normal">
+                <AlignLeft className="w-3.5 h-3.5 text-muted-foreground" />
+                <Label className="text-xs text-foreground font-normal">
                   Word Wrap
                 </Label>
               </div>
@@ -324,8 +324,8 @@ export function SettingsWidget({ children }: SettingsWidgetProps) {
 
             <div className="flex items-center justify-between px-1">
               <div className="flex items-center gap-2">
-                <Code2 className="w-3.5 h-3.5 text-zinc-400" />
-                <Label className="text-xs text-zinc-300 font-normal">
+                <Code2 className="w-3.5 h-3.5 text-muted-foreground" />
+                <Label className="text-xs text-foreground font-normal">
                   Emmet Abbreviations
                 </Label>
               </div>
@@ -337,18 +337,18 @@ export function SettingsWidget({ children }: SettingsWidgetProps) {
             </div>
           </div>
 
-          <Separator className="bg-white/5 mx-2" />
+          <Separator className="bg-secondary mx-2" />
 
           {/* Section: System */}
           <div className="p-2 space-y-3">
-            <div className="flex items-center gap-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">
+            <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
               <SettingsIconIcon className="w-3 h-3" /> System
             </div>
 
-            <div className="p-2 bg-white/5 border border-white/5 rounded-md space-y-2">
+            <div className="p-2 bg-secondary border border-border rounded-md space-y-2">
               <div className="flex items-center gap-2">
-                <GitBranch className="w-3.5 h-3.5 text-zinc-400" />
-                <Label className="text-xs text-zinc-300 font-normal">
+                <GitBranch className="w-3.5 h-3.5 text-muted-foreground" />
+                <Label className="text-xs text-foreground font-normal">
                   Import GitHub Repo
                 </Label>
               </div>
@@ -357,7 +357,7 @@ export function SettingsWidget({ children }: SettingsWidgetProps) {
                   value={importUrl}
                   onChange={(e) => setImportUrl(e.target.value)}
                   placeholder="owner/repo"
-                  className="h-7 text-xs bg-black/20 border-white/10"
+                  className="h-7 text-xs bg-background border-border"
                 />
                 <Button
                   size="sm"
@@ -377,7 +377,7 @@ export function SettingsWidget({ children }: SettingsWidgetProps) {
                   variant="outline"
                   size="sm"
                   onClick={() => shell.syncSize()}
-                  className="h-7 text-[10px] justify-center bg-white/5 border-white/10 hover:bg-white/10 text-zinc-300"
+                  className="h-7 text-[10px] justify-center bg-secondary border-border hover:bg-white/10 text-foreground"
                 >
                   <Terminal className="w-3 h-3 mr-1.5" />
                   Fix Term Size
@@ -416,30 +416,30 @@ export function SettingsWidget({ children }: SettingsWidgetProps) {
             </Button>
           </div>
 
-          <Separator className="bg-white/5 mx-2" />
+          <Separator className="bg-secondary mx-2" />
 
           {/* Section: Account */}
           <div className="p-2 space-y-3">
-            <div className="flex items-center gap-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">
+            <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
               <User className="w-3 h-3" /> Account
             </div>
 
             {session?.user ? (
               <div className="space-y-2">
-                <div className="flex items-center justify-between p-2 bg-white/5 border border-white/5 rounded-md">
+                <div className="flex items-center justify-between p-2 bg-secondary border border-border rounded-md">
                   <div className="flex items-center gap-2 overflow-hidden">
                     {session.user.image && (
                       <img
                         src={session.user.image}
                         alt="Avatar"
-                        className="w-8 h-8 rounded-full border border-white/10"
+                        className="w-8 h-8 rounded-full border border-border"
                       />
                     )}
                     <div className="overflow-hidden">
-                      <span className="text-xs text-zinc-200 font-medium block truncate">
+                      <span className="text-xs text-foreground font-medium block truncate">
                         {session.user.name}
                       </span>
-                      <span className="text-[10px] text-zinc-500 block truncate">
+                      <span className="text-[10px] text-muted-foreground block truncate">
                         {session.user.email}
                       </span>
                     </div>
@@ -457,7 +457,7 @@ export function SettingsWidget({ children }: SettingsWidgetProps) {
                   variant="outline"
                   size="sm"
                   onClick={() => window.open("/profile", "_self")}
-                  className="w-full h-7 text-[10px] bg-white/5 border-white/10 hover:bg-white/10 text-zinc-300"
+                  className="w-full h-7 text-[10px] bg-secondary border-border hover:bg-white/10 text-foreground"
                 >
                   <User className="w-3 h-3 mr-2" />
                   View Profile
@@ -468,7 +468,7 @@ export function SettingsWidget({ children }: SettingsWidgetProps) {
                 variant="ghost"
                 size="sm"
                 onClick={() => signIn()}
-                className="w-full h-8 text-[11px] justify-start hover:bg-white/5"
+                className="w-full h-8 text-[11px] justify-start hover:bg-secondary"
               >
                 <Github className="w-3.5 h-3.5 mr-2" />
                 Sign In with GitHub

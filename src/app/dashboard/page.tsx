@@ -28,7 +28,7 @@ export default async function DashboardPage() {
       <nav className="border-b border-border bg-background/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-linear-to-br from-blue-500 to-purple-600 flex items-center justify-center font-bold text-white shadow-lg shadow-blue-500/20">
+            <div className="w-8 h-8 rounded-lg bg-linear-to-br from-blue-500 to-purple-600 flex items-center justify-center font-bold text-foreground shadow-lg shadow-blue-500/20">
               N
             </div>
             <span className="font-bold text-xl tracking-tight">NexIDE</span>
@@ -43,7 +43,7 @@ export default async function DashboardPage() {
                 <span className="text-sm font-medium group-hover:text-blue-400 transition-colors">
                   {session.user?.name}
                 </span>
-                <span className="text-xs text-zinc-500">
+                <span className="text-xs text-muted-foreground">
                   {session.user?.email}
                 </span>
               </div>
@@ -53,20 +53,20 @@ export default async function DashboardPage() {
                   alt="Profile"
                   width={36}
                   height={36}
-                  className="rounded-full border border-white/10 group-hover:border-blue-500/50 transition-colors"
+                  className="rounded-full border border-border group-hover:border-blue-500/50 transition-colors"
                 />
               )}
             </Link>
             <SettingsWidget>
-              <button className="p-2 hover:bg-white/5 rounded-full transition-colors">
-                <Settings className="w-5 h-5 text-zinc-400" />
+              <button className="p-2 hover:bg-secondary rounded-full transition-colors">
+                <Settings className="w-5 h-5 text-muted-foreground" />
               </button>
             </SettingsWidget>
             <Link
               href="/api/auth/signout"
-              className="p-2 hover:bg-white/5 rounded-full transition-colors"
+              className="p-2 hover:bg-secondary rounded-full transition-colors"
             >
-              <LogOut className="w-5 h-5 text-zinc-400" />
+              <LogOut className="w-5 h-5 text-muted-foreground" />
             </Link>
           </div>
         </div>
@@ -81,7 +81,7 @@ export default async function DashboardPage() {
               <h1 className="text-4xl font-bold bg-linear-to-r from-foreground to-muted-foreground bg-clip-text text-transparent">
                 Welcome back, {session.user?.name?.split(" ")[0]}
               </h1>
-              <p className="text-zinc-500 mt-2">
+              <p className="text-muted-foreground mt-2">
                 Pick up where you left off or start something new.
               </p>
             </section>
@@ -95,22 +95,22 @@ export default async function DashboardPage() {
 
           {/* Sidebar / Stats */}
           <div className="space-y-6">
-            <div className="bg-linear-to-br from-white/5 to-transparent border border-white/10 p-6 rounded-2xl">
+            <div className="bg-linear-to-br from-accent to-transparent border border-border p-6 rounded-2xl">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="font-semibold">Your Workspace</h3>
-                <Settings className="w-4 h-4 text-zinc-500" />
+                <Settings className="w-4 h-4 text-muted-foreground" />
               </div>
 
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-zinc-400">Theme</span>
-                  <span className="text-xs px-2 py-1 rounded bg-zinc-800 border border-white/5">
+                  <span className="text-sm text-muted-foreground">Theme</span>
+                  <span className="text-xs px-2 py-1 rounded bg-secondary border border-border">
                     Modern Dark
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-zinc-400">Storage</span>
-                  <span className="text-xs px-2 py-1 rounded bg-zinc-800 border border-white/5 text-zinc-500 italic">
+                  <span className="text-sm text-muted-foreground">Storage</span>
+                  <span className="text-xs px-2 py-1 rounded bg-secondary border border-border text-muted-foreground italic">
                     Local First
                   </span>
                 </div>
@@ -124,11 +124,11 @@ export default async function DashboardPage() {
               </div>
             </div>
 
-            <div className="bg-white/5 border border-white/10 p-6 rounded-2xl">
-              <h3 className="font-semibold mb-4 text-sm uppercase tracking-widest text-zinc-500">
+            <div className="bg-secondary border border-border p-6 rounded-2xl">
+              <h3 className="font-semibold mb-4 text-sm uppercase tracking-widest text-muted-foreground">
                 Active Node Task
               </h3>
-              <div className="flex items-center gap-4 text-zinc-400">
+              <div className="flex items-center gap-4 text-muted-foreground">
                 <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                 <span className="text-sm italic">WebContainer Idle</span>
               </div>
