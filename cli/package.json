@@ -1,6 +1,6 @@
 {
   "name": "@nanigoud1912/nexide",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "The local server for NexIDE — enables native terminal, local file access, and on-demand node_modules serving for Go-to-Definition",
   "main": "index.js",
   "bin": {
