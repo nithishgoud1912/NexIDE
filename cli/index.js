@@ -188,22 +188,37 @@ function setupProjectSync(socket, projectPath) {
     };
 
     const files = getAllFiles(projectPath);
+    const BATCH_SIZE = 10;
     let syncCount = 0;
-    files.forEach((fullPath) => {
-      try {
-        const content = fs.readFileSync(fullPath, "utf8");
-        const virtualPath = path
-          .relative(projectPath, fullPath)
-          .replace(/\\/g, "/");
 
-        socket.emit("file-sync", {
-          path: `file:///${virtualPath}`,
-          content: content,
-        });
-        syncCount++;
-      } catch (e) {}
-    });
-    console.log(`[NexIDE] Warm Boot: Synced ${syncCount} files.`);
+    const syncBatch = (startIdx) => {
+      const end = Math.min(startIdx + BATCH_SIZE, files.length);
+      for (let i = startIdx; i < end; i++) {
+        try {
+          const content = fs.readFileSync(files[i], "utf8");
+          const virtualPath = path
+            .relative(projectPath, files[i])
+            .replace(/\\/g, "/");
+          socket.emit("file-sync", {
+            path: `file:///${virtualPath}`,
+            content: content,
+          });
+          syncCount++;
+        } catch (e) {}
+      }
+      if (end < files.length) {
+        // Yield to event loop — lets PTY output flow through
+        setImmediate(() => syncBatch(end));
+      } else {
+        console.log(`[NexIDE] Warm Boot: Synced ${syncCount} files.`);
+      }
+    };
+
+    if (files.length > 0) {
+      syncBatch(0);
+    } else {
+      console.log("[NexIDE] Warm Boot: No files to sync.");
+    }
   } catch (e) {}
 
   // File Watcher
@@ -260,15 +275,20 @@ io.on("connection", (socket) => {
     if (projectWatcher) projectWatcher.close();
     if (pkgWatcher) pkgWatcher.close();
 
-    syncAllProjectTypes(socket, projectPath);
+    // File sync (warm boot) runs immediately but with async I/O
     projectWatcher = setupProjectSync(socket, projectPath);
 
-    const pkgJsonPath = path.join(projectPath, "package.json");
-    if (fs.existsSync(pkgJsonPath)) {
-      pkgWatcher = chokidar.watch(pkgJsonPath).on("change", () => {
-        syncAllProjectTypes(socket, projectPath);
-      });
-    }
+    // Type sync runs in the background — don't block the shell
+    setImmediate(() => {
+      syncAllProjectTypes(socket, projectPath);
+
+      const pkgJsonPath = path.join(projectPath, "package.json");
+      if (fs.existsSync(pkgJsonPath)) {
+        pkgWatcher = chokidar.watch(pkgJsonPath).on("change", () => {
+          syncAllProjectTypes(socket, projectPath);
+        });
+      }
+    });
   };
 
   const setupPty = (cwd) => {
@@ -325,9 +345,11 @@ io.on("connection", (socket) => {
       fs.existsSync(absolutePath) &&
       fs.lstatSync(absolutePath).isDirectory()
     ) {
-      startProjectServices(absolutePath);
+      // PTY first for instant shell prompt
       setupPty(absolutePath);
       socket.emit("root-path", absolutePath);
+      // File sync + types in the background
+      startProjectServices(absolutePath);
     } else {
       socket.emit("error", `Project path does not exist: ${absolutePath}`);
     }
@@ -342,9 +364,11 @@ io.on("connection", (socket) => {
       socket.emit("error", `Path does not exist: ${newPath}`);
       return;
     }
-    startProjectServices(newPath);
+    // PTY first for instant shell prompt
     setupPty(newPath);
     socket.emit("root-path", newPath);
+    // File sync + types in the background
+    startProjectServices(newPath);
   });
 
   socket.on("find-project", (folderName) => {
@@ -357,8 +381,8 @@ io.on("connection", (socket) => {
       if (path.basename(curr) === folderName) {
         socket.emit("project-located", curr);
         socket.emit("root-path", curr);
-        startProjectServices(curr);
         setupPty(curr);
+        startProjectServices(curr);
         return;
       }
       const parent = path.dirname(curr);
@@ -383,8 +407,8 @@ io.on("connection", (socket) => {
         if (fs.existsSync(potential) && fs.lstatSync(potential).isDirectory()) {
           socket.emit("project-located", potential);
           socket.emit("root-path", potential);
-          startProjectServices(potential);
           setupPty(potential);
+          startProjectServices(potential);
           return;
         }
       } catch (e) {}
