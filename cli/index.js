@@ -39,10 +39,10 @@ console.log(`
 `);
 
 setTimeout(() => {
-  console.log(`\x1b[33m🌐 Opening NexIDE in your browser: ${NEXIDE_URL}\x1b[0m`);
   console.log(
-    `\x1b[90m   Keep this terminal open while you code!\x1b[0m\n`,
+    `\x1b[33m🌐 Opening NexIDE in your browser: ${NEXIDE_URL}\x1b[0m`,
   );
+  console.log(`\x1b[90m   Keep this terminal open while you code!\x1b[0m\n`);
   open(NEXIDE_URL);
 }, 1000);
 
@@ -321,7 +321,10 @@ io.on("connection", (socket) => {
       socket.emit("error", "Invalid project path");
       return;
     }
-    if (fs.existsSync(absolutePath) && fs.lstatSync(absolutePath).isDirectory()) {
+    if (
+      fs.existsSync(absolutePath) &&
+      fs.lstatSync(absolutePath).isDirectory()
+    ) {
       startProjectServices(absolutePath);
       setupPty(absolutePath);
       socket.emit("root-path", absolutePath);
@@ -418,7 +421,9 @@ io.on("connection", (socket) => {
       const normalizedProject = path.resolve(currentProjectPath);
 
       if (!fullPath.startsWith(normalizedProject)) {
-        const errPayload = { error: "Access denied: path outside project directory" };
+        const errPayload = {
+          error: "Access denied: path outside project directory",
+        };
         if (typeof callback === "function") callback(errPayload);
         else socket.emit("file-content-error", errPayload);
         return;
