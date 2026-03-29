@@ -46,6 +46,25 @@ const chokidar = require("chokidar");
 
 const typeCache = new Map();
 
+const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
+
+const SENSITIVE_ENV_KEYS = [
+  "AUTH_SECRET",
+  "AUTH_GITHUB_SECRET",
+  "AUTH_GITHUB_ID",
+  "DATABASE_URL",
+  "GITHUB_TOKEN",
+  "GOOGLE_GENERATIVE_AI_API_KEY",
+  "GROQ_API_KEY",
+];
+
+const SKIP_FILES = new Set([
+  "package-lock.json",
+  "yarn.lock",
+  "pnpm-lock.yaml",
+  "bun.lockb",
+]);
+
 function getPackageTypes(pkgName, projectPath) {
   const cacheKey = `${pkgName}:${projectPath}`;
   if (typeCache.has(cacheKey)) return typeCache.get(cacheKey);
@@ -154,12 +173,16 @@ function setupProjectSync(socket, projectPath) {
       const files = fs.readdirSync(dir);
       files.forEach((file) => {
         if (ignoredDirs.includes(file)) return;
+        if (SKIP_FILES.has(file)) return;
         const fullPath = path.join(dir, file);
-        if (fs.lstatSync(fullPath).isDirectory()) {
-          getAllFiles(fullPath, allFiles);
-        } else {
-          allFiles.push(fullPath);
-        }
+        try {
+          const stat = fs.lstatSync(fullPath);
+          if (stat.isDirectory()) {
+            getAllFiles(fullPath, allFiles);
+          } else if (stat.size <= MAX_FILE_SIZE) {
+            allFiles.push(fullPath);
+          }
+        } catch (e) {}
       });
       return allFiles;
     };
@@ -290,7 +313,11 @@ app.prepare().then(() => {
         cols: 80,
         rows: 30,
         cwd: cwd,
-        env: process.env,
+        env: (() => {
+          const safeEnv = { ...process.env };
+          SENSITIVE_ENV_KEYS.forEach((key) => delete safeEnv[key]);
+          return safeEnv;
+        })(),
       });
 
       ptyProcess.onData((data) => {
@@ -317,7 +344,11 @@ app.prepare().then(() => {
 
     socket.on("open-project-path", (absolutePath) => {
       console.log(`[Server] Directly opening: ${absolutePath}`);
-      if (fs.existsSync(absolutePath)) {
+      if (!absolutePath || typeof absolutePath !== "string") {
+        socket.emit("error", "Invalid project path");
+        return;
+      }
+      if (fs.existsSync(absolutePath) && fs.lstatSync(absolutePath).isDirectory()) {
         startProjectServices(absolutePath);
         setupPty(absolutePath);
         socket.emit("root-path", absolutePath);
@@ -327,6 +358,14 @@ app.prepare().then(() => {
     });
 
     socket.on("chdir", (newPath) => {
+      if (!newPath || typeof newPath !== "string") {
+        socket.emit("error", "Invalid path");
+        return;
+      }
+      if (!fs.existsSync(newPath) || !fs.lstatSync(newPath).isDirectory()) {
+        socket.emit("error", `Path does not exist or is not a directory: ${newPath}`);
+        return;
+      }
       startProjectServices(newPath);
       setupPty(newPath);
       socket.emit("root-path", newPath);
@@ -398,11 +437,22 @@ app.prepare().then(() => {
      */
     socket.on("request-file", (requestedPath, callback) => {
       try {
-        let fullPath;
-        if (path.isAbsolute(requestedPath)) {
-          fullPath = requestedPath;
-        } else {
-          fullPath = path.join(currentProjectPath, requestedPath);
+        if (!requestedPath || typeof requestedPath !== "string") {
+          const errPayload = { error: "Invalid file path" };
+          if (typeof callback === "function") callback(errPayload);
+          else socket.emit("file-content-error", errPayload);
+          return;
+        }
+
+        // Path traversal protection
+        const fullPath = path.resolve(currentProjectPath, requestedPath);
+        const normalizedProject = path.resolve(currentProjectPath);
+
+        if (!fullPath.startsWith(normalizedProject)) {
+          const errPayload = { error: "Access denied: path outside project directory" };
+          if (typeof callback === "function") callback(errPayload);
+          else socket.emit("file-content-error", errPayload);
+          return;
         }
 
         if (!fs.existsSync(fullPath)) {

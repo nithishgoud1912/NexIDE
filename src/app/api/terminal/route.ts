@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { spawn } from "node-pty";
 import os from "os";
 import { shellSessions } from "@/lib/terminal-store";
+import { auth } from "@/auth";
 
 // This prevents the route from being static
 export const dynamic = "force-dynamic";
@@ -12,25 +13,47 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    // Auth check — prevent unauthenticated terminal access
+    const session = await auth();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { action, id, data, cols, rows, cwd } = await req.json();
+
+    if (!action || typeof action !== "string") {
+      return NextResponse.json(
+        { error: "Action is required" },
+        { status: 400 },
+      );
+    }
 
     if (action === "create") {
       const shell = os.platform() === "win32" ? "powershell.exe" : "bash";
+
+      // Filter sensitive env vars before passing to PTY
+      const safeEnv = { ...process.env };
+      const sensitiveKeys = [
+        "AUTH_SECRET",
+        "AUTH_GITHUB_SECRET",
+        "AUTH_GITHUB_ID",
+        "DATABASE_URL",
+        "GITHUB_TOKEN",
+        "GOOGLE_GENERATIVE_AI_API_KEY",
+        "GROQ_API_KEY",
+      ];
+      sensitiveKeys.forEach((key) => delete safeEnv[key]);
 
       const ptyProcess = spawn(shell, [], {
         name: "xterm-color",
         cols: cols || 80,
         rows: rows || 24,
         cwd: cwd || process.cwd(),
-        env: process.env,
+        env: safeEnv as Record<string, string>,
       });
 
       const sessionId = id || Math.random().toString(36).substring(7);
       shellSessions.set(sessionId, ptyProcess);
-
-      //   console.log(
-      //     `[Local Terminal] Created session ${sessionId} in ${ptyProcess.cwd}`,
-      //   );
 
       return NextResponse.json({
         sessionId,
@@ -58,18 +81,6 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === "read") {
-      // For polling basic output (MVP)
-      // Note: Real streaming should use WebSockets, which Next.js App Router
-      // doesn't support natively in API routes yet without a custom server.
-      // We'll use a simple buffer queue or similar for MVP.
-
-      // Actually, for "Remote Control", a better pattern without custom server
-      // is to let the client poll frequently, or use Server-Sent Events (SSE).
-
-      // Let's implement a quick polling buffer for now.
-      // But wait... ptyProcess.on('data') is async.
-      // We need to buffer data for the client to fetch.
-
       return NextResponse.json(
         { error: "Read not implemented via POST. Use WebSocket/SSE." },
         { status: 501 },
@@ -80,7 +91,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error("[Local Terminal] Error:", error);
     return NextResponse.json(
-      { error: "Internal Server Error", details: String(error) },
+      { error: "Internal Server Error" },
       { status: 500 },
     );
   }

@@ -317,7 +317,11 @@ io.on("connection", (socket) => {
   // ── Project Management ──
   socket.on("open-project-path", (absolutePath) => {
     console.log(`[NexIDE] Opening: ${absolutePath}`);
-    if (fs.existsSync(absolutePath)) {
+    if (!absolutePath || typeof absolutePath !== "string") {
+      socket.emit("error", "Invalid project path");
+      return;
+    }
+    if (fs.existsSync(absolutePath) && fs.lstatSync(absolutePath).isDirectory()) {
       startProjectServices(absolutePath);
       setupPty(absolutePath);
       socket.emit("root-path", absolutePath);
@@ -327,6 +331,14 @@ io.on("connection", (socket) => {
   });
 
   socket.on("chdir", (newPath) => {
+    if (!newPath || typeof newPath !== "string") {
+      socket.emit("error", "Invalid path");
+      return;
+    }
+    if (!fs.existsSync(newPath) || !fs.lstatSync(newPath).isDirectory()) {
+      socket.emit("error", `Path does not exist: ${newPath}`);
+      return;
+    }
     startProjectServices(newPath);
     setupPty(newPath);
     socket.emit("root-path", newPath);
@@ -394,11 +406,22 @@ io.on("connection", (socket) => {
   // the frontend requests the specific file through this event.
   socket.on("request-file", (requestedPath, callback) => {
     try {
-      let fullPath;
-      if (path.isAbsolute(requestedPath)) {
-        fullPath = requestedPath;
-      } else {
-        fullPath = path.join(currentProjectPath, requestedPath);
+      if (!requestedPath || typeof requestedPath !== "string") {
+        const errPayload = { error: "Invalid file path" };
+        if (typeof callback === "function") callback(errPayload);
+        else socket.emit("file-content-error", errPayload);
+        return;
+      }
+
+      // Path traversal protection
+      const fullPath = path.resolve(currentProjectPath, requestedPath);
+      const normalizedProject = path.resolve(currentProjectPath);
+
+      if (!fullPath.startsWith(normalizedProject)) {
+        const errPayload = { error: "Access denied: path outside project directory" };
+        if (typeof callback === "function") callback(errPayload);
+        else socket.emit("file-content-error", errPayload);
+        return;
       }
 
       if (!fs.existsSync(fullPath)) {

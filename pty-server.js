@@ -6,8 +6,27 @@ const { Server } = require("socket.io");
 const chokidar = require("chokidar");
 
 // Port 3001 as recommended by user instructions
-const NEXT_PORT = process.env.PORT || 3000;
-const io = new Server(3001, {
+const PORT = 3001;
+const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
+
+const SENSITIVE_ENV_KEYS = [
+  "AUTH_SECRET",
+  "AUTH_GITHUB_SECRET",
+  "AUTH_GITHUB_ID",
+  "DATABASE_URL",
+  "GITHUB_TOKEN",
+  "GOOGLE_GENERATIVE_AI_API_KEY",
+  "GROQ_API_KEY",
+];
+
+const SKIP_FILES = new Set([
+  "package-lock.json",
+  "yarn.lock",
+  "pnpm-lock.yaml",
+  "bun.lockb",
+]);
+
+const io = new Server(PORT, {
   cors: {
     // Only allow connections from the Next.js dev server (localhost)
     origin: ["http://localhost:3000", "https://nexide.onrender.com"],
@@ -159,12 +178,16 @@ function setupProjectSync(socket, projectPath) {
       const files = fs.readdirSync(dir);
       files.forEach((file) => {
         if (ignoredDirs.includes(file)) return;
+        if (SKIP_FILES.has(file)) return;
         const fullPath = path.join(dir, file);
-        if (fs.lstatSync(fullPath).isDirectory()) {
-          getAllFiles(fullPath, allFiles);
-        } else {
-          allFiles.push(fullPath);
-        }
+        try {
+          const stat = fs.lstatSync(fullPath);
+          if (stat.isDirectory()) {
+            getAllFiles(fullPath, allFiles);
+          } else if (stat.size <= MAX_FILE_SIZE) {
+            allFiles.push(fullPath);
+          }
+        } catch (e) {}
       });
       return allFiles;
     };
@@ -277,12 +300,16 @@ io.on("connection", (socket) => {
         ? ["-NoProfile", "-ExecutionPolicy", "Bypass"]
         : ["--norc", "--noprofile"];
 
+    // Filter sensitive env vars before passing to PTY
+    const safeEnv = { ...process.env };
+    SENSITIVE_ENV_KEYS.forEach((key) => delete safeEnv[key]);
+
     ptyProcess = pty.spawn(shell, shellArgs, {
       name: "xterm-color",
       cols: 80,
       rows: 30,
       cwd: cwd,
-      env: process.env,
+      env: safeEnv,
     });
 
     ptyProcess.onData((data) => {
@@ -314,9 +341,12 @@ io.on("connection", (socket) => {
 
   socket.on("open-project-path", (absolutePath) => {
     console.log(`[PTY Server] Directly opening: ${absolutePath}`);
-    if (fs.existsSync(absolutePath)) {
+    if (!absolutePath || typeof absolutePath !== "string") {
+      socket.emit("error", "Invalid project path");
+      return;
+    }
+    if (fs.existsSync(absolutePath) && fs.lstatSync(absolutePath).isDirectory()) {
       startProjectServices(absolutePath);
-      // If PTY not started or started in wrong place, (re)spawn it correctly
       setupPty(absolutePath);
       socket.emit("root-path", absolutePath);
     } else {
@@ -326,6 +356,14 @@ io.on("connection", (socket) => {
 
   socket.on("chdir", (newPath) => {
     console.log(`[PTY Server] Manually changing directory to: ${newPath}`);
+    if (!newPath || typeof newPath !== "string") {
+      socket.emit("error", "Invalid path");
+      return;
+    }
+    if (!fs.existsSync(newPath) || !fs.lstatSync(newPath).isDirectory()) {
+      socket.emit("error", `Path does not exist or is not a directory: ${newPath}`);
+      return;
+    }
     startProjectServices(newPath);
     setupPty(newPath);
     socket.emit("root-path", newPath);
@@ -414,11 +452,22 @@ io.on("connection", (socket) => {
    */
   socket.on("request-file", (requestedPath, callback) => {
     try {
-      let fullPath;
-      if (path.isAbsolute(requestedPath)) {
-        fullPath = requestedPath;
-      } else {
-        fullPath = path.join(currentProjectPath, requestedPath);
+      if (!requestedPath || typeof requestedPath !== "string") {
+        const errPayload = { error: "Invalid file path" };
+        if (typeof callback === "function") callback(errPayload);
+        else socket.emit("file-content-error", errPayload);
+        return;
+      }
+
+      // Path traversal protection: resolve and ensure within project
+      const fullPath = path.resolve(currentProjectPath, requestedPath);
+      const normalizedProject = path.resolve(currentProjectPath);
+
+      if (!fullPath.startsWith(normalizedProject)) {
+        const errPayload = { error: "Access denied: path outside project directory" };
+        if (typeof callback === "function") callback(errPayload);
+        else socket.emit("file-content-error", errPayload);
+        return;
       }
 
       if (!fs.existsSync(fullPath)) {

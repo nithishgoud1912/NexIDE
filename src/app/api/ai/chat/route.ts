@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/auth";
 
 type Provider = "gemini" | "groq" | "copilot";
 
@@ -49,10 +50,13 @@ async function streamGemini(
   ];
 
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse&key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey,
+      },
       body: JSON.stringify({
         contents,
         generationConfig: {
@@ -234,6 +238,12 @@ function createSSEStream(response: Response, format: "gemini" | "openai") {
 // ─── Main handler ───
 export async function POST(req: NextRequest) {
   try {
+    // Auth check — prevent unauthenticated API abuse
+    const session = await auth();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { messages, context, provider = "gemini" } = await req.json();
 
     const systemPrompt = buildSystemPrompt(context);

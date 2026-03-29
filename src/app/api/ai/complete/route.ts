@@ -1,10 +1,20 @@
 import { NextRequest } from "next/server";
+import { auth } from "@/auth";
 
 export const runtime = "edge"; // Use edge runtime for faster streaming
 
 export async function POST(req: NextRequest) {
   const startTime = Date.now();
   try {
+    // Auth check — prevent unauthenticated API abuse
+    const session = await auth();
+    if (!session) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     const { prefix, suffix, language, filePath } = await req.json();
 
     const token = process.env.GITHUB_TOKEN;
