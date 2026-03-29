@@ -1,13 +1,34 @@
 {
   "name": "@nanigoud1912/nexide",
-  "version": "1.0.0",
-  "description": "The local server for NexIDE to enable native terminal and local file access",
+  "version": "1.1.0",
+  "description": "The local server for NexIDE — enables native terminal, local file access, and on-demand node_modules serving for Go-to-Definition",
   "main": "index.js",
   "bin": {
     "nexide": "./index.js"
   },
   "scripts": {
     "start": "node index.js"
+  },
+  "keywords": [
+    "nexide",
+    "ide",
+    "web-ide",
+    "terminal",
+    "pty",
+    "cloud-ide",
+    "code-editor"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nithishgoud1912/NexIDE"
+  },
+  "files": [
+    "index.js",
+    "package.json",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
   },
   "dependencies": {
     "chokidar": "^3.6.0",

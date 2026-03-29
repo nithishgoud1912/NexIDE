@@ -30,6 +30,8 @@ interface ShellContextType {
   toggleTerminalMode: () => void;
   syncSize: () => void;
   requestTypes: (packages: string[]) => void;
+  /** Request a file from the host filesystem (including node_modules) */
+  requestFile: (filePath: string) => Promise<{ path: string; content: string } | null>;
   updateRootPath: (path: string) => void;
   findProjectOnHost: (name: string) => void;
   openProjectPath: (path: string) => void;
@@ -218,6 +220,49 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
+    // Listen for file-content events (for on-demand node_modules file loading)
+    socket.on("file-content", ({ path: filePath, content, isDirectory }) => {
+      if (isDirectory || !content) return;
+
+      const monaco = (window as any).monaco;
+      if (!monaco) return;
+
+      // Determine the URI — node_modules files use file:///node_modules/...
+      const uri = monaco.Uri.parse(`file:///${filePath}`);
+      let model = monaco.editor.getModel(uri);
+
+      if (!model) {
+        // Detect language from extension
+        const ext = filePath.split(".").pop()?.toLowerCase();
+        const langMap: Record<string, string> = {
+          ts: "typescript",
+          tsx: "typescriptreact",
+          js: "javascript",
+          jsx: "javascriptreact",
+          json: "json",
+          css: "css",
+          scss: "scss",
+          html: "html",
+          md: "markdown",
+          mjs: "javascript",
+          cjs: "javascript",
+          d: "typescript", // for .d.ts files
+        };
+        // Handle .d.ts specifically
+        const isDts = filePath.endsWith(".d.ts");
+        const lang = isDts ? "typescript" : (langMap[ext || ""] || "plaintext");
+
+        model = monaco.editor.createModel(content, lang, uri);
+        console.log(`[ShellContext] Created Monaco model for ${filePath}`);
+      } else if (model.getValue() !== content) {
+        model.pushEditOperations(
+          [],
+          [{ range: model.getFullModelRange(), text: content }],
+          () => null,
+        );
+      }
+    });
+
     return socket;
   }, []);
 
@@ -243,6 +288,70 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
       return () =>
         window.removeEventListener("user-edit", handleUserEdit as any);
     }
+  }, []);
+
+  // Bridge: Listen for on-demand file requests from the editor (Go to Definition)
+  // The editor dispatches "pty-file-request" when navigating to node_modules files,
+  // and we fetch the content from the PTY server, then dispatch the response back.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleFileRequest = async (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail?.path) return;
+
+      const filePath = detail.path;
+      const socket = localSocketRef.current as any;
+      if (!socket) {
+        window.dispatchEvent(
+          new CustomEvent("pty-file-response", {
+            detail: { path: filePath, error: "No socket connection" },
+          }),
+        );
+        return;
+      }
+
+      // Use the socket callback pattern to fetch the file
+      socket.emit(
+        "request-file",
+        filePath,
+        (response: {
+          path?: string;
+          content?: string;
+          error?: string;
+          isDirectory?: boolean;
+        }) => {
+          if (response?.error || !response?.content) {
+            console.warn(
+              `[ShellContext] Failed to fetch ${filePath}:`,
+              response?.error,
+            );
+            window.dispatchEvent(
+              new CustomEvent("pty-file-response", {
+                detail: {
+                  path: filePath,
+                  error: response?.error || "No content",
+                },
+              }),
+            );
+            return;
+          }
+
+          window.dispatchEvent(
+            new CustomEvent("pty-file-response", {
+              detail: {
+                path: filePath,
+                content: response.content,
+              },
+            }),
+          );
+        },
+      );
+    };
+
+    window.addEventListener("pty-file-request", handleFileRequest);
+    return () =>
+      window.removeEventListener("pty-file-request", handleFileRequest);
   }, []);
 
   // Update Terminal Theme when App Theme changes
@@ -654,6 +763,42 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  /**
+   * Request a file from the host filesystem on-demand.
+   * Used primarily for node_modules files that aren't synced in the warm boot.
+   * Returns a promise that resolves to { path, content } or null on error.
+   */
+  const requestFile = useCallback(
+    (filePath: string): Promise<{ path: string; content: string } | null> => {
+      return new Promise((resolve) => {
+        if (!localSocketRef.current) {
+          resolve(null);
+          return;
+        }
+
+        const socket = localSocketRef.current as any;
+
+        // Use callback-based acknowledgment if socket supports it (Socket.IO ack)
+        socket.emit(
+          "request-file",
+          filePath,
+          (response: { path?: string; content?: string; error?: string }) => {
+            if (response?.error || !response?.content) {
+              console.warn(`[ShellContext] Failed to fetch file ${filePath}:`, response?.error);
+              resolve(null);
+              return;
+            }
+            resolve({ path: response.path || filePath, content: response.content });
+          },
+        );
+
+        // Timeout after 10 seconds
+        setTimeout(() => resolve(null), 10000);
+      });
+    },
+    [],
+  );
+
   const subscribeToOutput = useCallback((callback: (data: string) => void) => {
     outputListenersRef.current.add(callback);
     return () => {
@@ -681,6 +826,7 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
           (localSocketRef.current as any).emit("request-types", packages);
         }
       },
+      requestFile,
       updateRootPath,
       findProjectOnHost,
       openProjectPath,
@@ -702,6 +848,7 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
       toggleTerminalMode,
       syncSize,
       destroy,
+      requestFile,
       updateRootPath,
       findProjectOnHost,
       openProjectPath,

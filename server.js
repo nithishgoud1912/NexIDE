@@ -390,6 +390,79 @@ app.prepare().then(() => {
       });
     });
 
+    /**
+     * On-demand file reader: serves ANY file from the host filesystem.
+     * This handles node_modules files — the warm boot and watcher skip
+     * node_modules for performance, but when the user navigates into a
+     * dependency (Go to Definition), the frontend requests the file here.
+     */
+    socket.on("request-file", (requestedPath, callback) => {
+      try {
+        let fullPath;
+        if (path.isAbsolute(requestedPath)) {
+          fullPath = requestedPath;
+        } else {
+          fullPath = path.join(currentProjectPath, requestedPath);
+        }
+
+        if (!fs.existsSync(fullPath)) {
+          const errPayload = { error: `File not found: ${requestedPath}` };
+          if (typeof callback === "function") {
+            callback(errPayload);
+          } else {
+            socket.emit("file-content-error", errPayload);
+          }
+          return;
+        }
+
+        const stat = fs.lstatSync(fullPath);
+        if (stat.isDirectory()) {
+          const entries = fs.readdirSync(fullPath).map((name) => {
+            const childPath = path.join(fullPath, name);
+            const childStat = fs.lstatSync(childPath);
+            return { name, isDirectory: childStat.isDirectory() };
+          });
+          const payload = { path: requestedPath, entries, isDirectory: true };
+          if (typeof callback === "function") {
+            callback(payload);
+          } else {
+            socket.emit("file-content", payload);
+          }
+          return;
+        }
+
+        if (stat.size > 2 * 1024 * 1024) {
+          const errPayload = {
+            error: `File too large (${stat.size} bytes): ${requestedPath}`,
+          };
+          if (typeof callback === "function") {
+            callback(errPayload);
+          } else {
+            socket.emit("file-content-error", errPayload);
+          }
+          return;
+        }
+
+        const content = fs.readFileSync(fullPath, "utf8");
+        const payload = { path: requestedPath, content, isDirectory: false };
+
+        if (typeof callback === "function") {
+          callback(payload);
+        } else {
+          socket.emit("file-content", payload);
+        }
+      } catch (e) {
+        const errPayload = {
+          error: `Failed to read ${requestedPath}: ${e.message}`,
+        };
+        if (typeof callback === "function") {
+          callback(errPayload);
+        } else {
+          socket.emit("file-content-error", errPayload);
+        }
+      }
+    });
+
     socket.on("disconnect", () => {
       console.log("[Server] Client disconnected, cleaning up");
       if (pkgWatcher) pkgWatcher.close();

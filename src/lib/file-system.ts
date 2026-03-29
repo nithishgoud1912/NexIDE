@@ -1,22 +1,41 @@
 import { FileSystemTree, WebContainer } from "@webcontainer/api";
 
 /**
- * Recursively reads a directory handle and returns a WebContainer FileSystemTree
+ * Recursively reads a directory handle and returns a WebContainer FileSystemTree.
+ * Skips large files (>5MB), lock files, and non-essential directories to avoid
+ * exceeding V8's string length limit during mount serialization.
  */
+
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB — skip files larger than this
+
+const SKIP_DIRS = new Set([
+  "node_modules",
+  ".git",
+  ".next",
+  "dist",
+  "build",
+  ".vscode",
+  ".cache",
+  ".turbo",
+  ".swc",
+  "__pycache__",
+  "coverage",
+]);
+
+const SKIP_FILES = new Set([
+  "package-lock.json",
+  "yarn.lock",
+  "pnpm-lock.yaml",
+  "bun.lockb",
+]);
+
 export async function getFileSystemTree(
   directoryHandle: FileSystemDirectoryHandle,
 ): Promise<FileSystemTree> {
   const tree: FileSystemTree = {};
 
   for await (const [name, handle] of directoryHandle.entries()) {
-    if (
-      name === "node_modules" ||
-      name === ".git" ||
-      name === ".next" ||
-      name === "dist" ||
-      name === "build" ||
-      name === ".vscode"
-    ) {
+    if (SKIP_DIRS.has(name)) {
       continue;
     }
 
@@ -25,11 +44,24 @@ export async function getFileSystemTree(
         directory: await getFileSystemTree(handle as FileSystemDirectoryHandle),
       };
     } else if (handle.kind === "file") {
+      // Skip known large lock files
+      if (SKIP_FILES.has(name)) {
+        continue;
+      }
+
       const fileHandle = handle as FileSystemFileHandle;
-      const file = await fileHandle.getFile(); // This might still be slow for large files
+      const file = await fileHandle.getFile();
+
+      // Skip files that are too large to avoid RangeError on mount
+      if (file.size > MAX_FILE_SIZE) {
+        console.warn(
+          `[FileSystem] Skipping large file (${(file.size / 1024 / 1024).toFixed(1)}MB): ${name}`,
+        );
+        continue;
+      }
 
       const isBinary =
-        /.(jpe?g|png|gif|webp|ico|svg|pdf|zip|rar|tar|gz|mp4|mp3|woff2?|ttf|otf|eot)$/i.test(
+        /\.(jpe?g|png|gif|webp|ico|svg|pdf|zip|rar|tar|gz|mp4|mp3|woff2?|ttf|otf|eot)$/i.test(
           name,
         );
 

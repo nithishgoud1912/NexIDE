@@ -1039,6 +1039,19 @@ function WorkspaceContent() {
     await saveFile(file.path, file.content);
   };
 
+  /**
+   * Handler for when Monaco navigates to a node_modules file (Go to Definition).
+   * Opens the file as a tab in the editor so users can read dependency source code.
+   */
+  const handleOpenNodeModuleFile = useCallback(
+    (filePath: string, content: string) => {
+      const fileName = filePath.split("/").pop() || filePath;
+      addOpenFile({ path: filePath, name: fileName, content });
+      setActiveFilePath(filePath);
+    },
+    [addOpenFile, setActiveFilePath],
+  );
+
   const handleSaveAll = useCallback(async () => {
     const unsavedParams = Array.from(unsavedFiles);
     for (const path of unsavedParams) {
@@ -1557,6 +1570,7 @@ function WorkspaceContent() {
                                       setActiveEditor("primary");
                                     }}
                                     onBlur={() => setIsEditorFocused(false)}
+                                    onOpenFile={handleOpenNodeModuleFile}
                                     onChange={(val) => {
                                       updateFileContent(activeFilePath, val);
                                       if (!unsavedFiles.has(activeFilePath))
@@ -1633,6 +1647,7 @@ function WorkspaceContent() {
                                       setActiveEditor("secondary");
                                     }}
                                     onBlur={() => setIsEditorFocused(false)}
+                                    onOpenFile={handleOpenNodeModuleFile}
                                     onChange={(val) => {
                                       updateFileContent(
                                         secondaryActiveFilePath,
@@ -1724,6 +1739,7 @@ function WorkspaceContent() {
                                   setActiveEditor("primary");
                                 }}
                                 onBlur={() => setIsEditorFocused(false)}
+                                onOpenFile={handleOpenNodeModuleFile}
                                 onChange={(content) => {
                                   // 1. Update local state immediately (for UI responsiveness)
                                   updateFileContent(activeFilePath, content);

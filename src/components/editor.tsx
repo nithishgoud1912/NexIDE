@@ -238,6 +238,8 @@ interface EditorProps {
   path?: string;
   onFocus?: () => void;
   onBlur?: () => void;
+  /** Called when Monaco navigates to a different file (e.g. Go to Definition) */
+  onOpenFile?: (path: string, content: string) => void;
 }
 
 let emmetRegistered = false;
@@ -314,6 +316,7 @@ export default function CodeEditor({
   path,
   onFocus,
   onBlur,
+  onOpenFile,
 }: EditorProps) {
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<Monaco | null>(null);
@@ -418,6 +421,131 @@ export default function CodeEditor({
     monaco.languages.typescript.javascriptDefaults.setCompilerOptions(
       compilerOptions,
     );
+
+    // ──────────────────────────────────────────────
+    // Intercept "Go to Definition" for node_modules
+    // ──────────────────────────────────────────────
+    // When Monaco resolves a definition to a file URI that contains
+    // node_modules, we fetch it on-demand from the PTY server which
+    // has access to the host filesystem.
+    const editorService = (editor as any)._codeEditorService;
+    if (editorService) {
+      const origOpenCodeEditor = editorService.openCodeEditor?.bind(editorService);
+      editorService.openCodeEditor = async (
+        input: any,
+        source: any,
+        sideBySide?: boolean,
+      ) => {
+        const targetUri = input?.resource;
+        if (targetUri) {
+          const uriStr = targetUri.toString();
+          const uriPath = targetUri.path || "";
+
+          // Check if this is a node_modules file
+          if (uriPath.includes("node_modules/") || uriPath.includes("node_modules\\")) {
+            // Extract the relative path: strip leading file:/// and slashes
+            let relativePath = uriPath.replace(/^\/+/, "");
+
+            // Ensure it starts with node_modules/
+            const nmIndex = relativePath.indexOf("node_modules/");
+            if (nmIndex >= 0) {
+              relativePath = relativePath.substring(nmIndex);
+            }
+
+            console.log(`[Editor] Go-to-Definition intercepted for: ${relativePath}`);
+
+            // Check if model already exists
+            let model = monaco.editor.getModel(targetUri);
+
+            if (!model) {
+              // Request file from host via PTY server through a window event
+              const fileData = await new Promise<{ content: string } | null>(
+                (resolve) => {
+                  const handleResponse = (e: Event) => {
+                    const detail = (e as CustomEvent).detail;
+                    if (detail?.path === relativePath) {
+                      window.removeEventListener(
+                        "pty-file-response",
+                        handleResponse,
+                      );
+                      resolve(detail);
+                    }
+                  };
+
+                  window.addEventListener(
+                    "pty-file-response",
+                    handleResponse,
+                  );
+
+                  // Dispatch request to shell context
+                  window.dispatchEvent(
+                    new CustomEvent("pty-file-request", {
+                      detail: { path: relativePath },
+                    }),
+                  );
+
+                  // Timeout after 8 seconds
+                  setTimeout(() => {
+                    window.removeEventListener(
+                      "pty-file-response",
+                      handleResponse,
+                    );
+                    resolve(null);
+                  }, 8000);
+                },
+              );
+
+              if (fileData?.content) {
+                const lang = getLanguageFromPath(relativePath);
+                model = monaco.editor.createModel(
+                  fileData.content,
+                  lang,
+                  targetUri,
+                );
+                console.log(
+                  `[Editor] Created model for node_modules file: ${relativePath}`,
+                );
+              } else {
+                console.warn(
+                  `[Editor] Could not fetch node_modules file: ${relativePath}`,
+                );
+                // Fall through to original handler
+              }
+            }
+
+            // If we have a model, open it in the current editor
+            if (model) {
+              editor.setModel(model);
+
+              // Jump to the specific position if requested
+              if (input.options?.selection) {
+                const sel = input.options.selection;
+                editor.revealLineInCenter(
+                  sel.startLineNumber || sel.selectionStartLineNumber || 1,
+                );
+                editor.setPosition({
+                  lineNumber: sel.startLineNumber || sel.selectionStartLineNumber || 1,
+                  column: sel.startColumn || sel.selectionStartColumn || 1,
+                });
+              }
+
+              // Notify parent that we opened a node_modules file
+              if (onOpenFile) {
+                onOpenFile(relativePath, model.getValue());
+              }
+
+              return editor;
+            }
+          }
+        }
+
+        // Fall back to the original handler for non-node_modules files
+        if (origOpenCodeEditor) {
+          return origOpenCodeEditor(input, source, sideBySide);
+        }
+        return null;
+      };
+    }
 
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
       onSave?.(editor.getValue());

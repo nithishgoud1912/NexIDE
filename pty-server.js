@@ -398,6 +398,93 @@ io.on("connection", (socket) => {
     });
   });
 
+  /**
+   * On-demand file reader: serves ANY file from the host filesystem.
+   * This is the key handler for node_modules files — the warm boot and
+   * watcher purposefully skip node_modules for performance, but when
+   * the user "Go to Definition"s into a dependency, the frontend
+   * requests the exact file through this event.
+   *
+   * Accepts either:
+   *   - A relative path (e.g. "node_modules/react/index.js") resolved
+   *     against the current project root
+   *   - An absolute path
+   *
+   * Responds with "file-content" or "file-content-error".
+   */
+  socket.on("request-file", (requestedPath, callback) => {
+    try {
+      let fullPath;
+      if (path.isAbsolute(requestedPath)) {
+        fullPath = requestedPath;
+      } else {
+        fullPath = path.join(currentProjectPath, requestedPath);
+      }
+
+      if (!fs.existsSync(fullPath)) {
+        const errPayload = { error: `File not found: ${requestedPath}` };
+        if (typeof callback === "function") {
+          callback(errPayload);
+        } else {
+          socket.emit("file-content-error", errPayload);
+        }
+        return;
+      }
+
+      const stat = fs.lstatSync(fullPath);
+      if (stat.isDirectory()) {
+        // If it's a directory, list its entries
+        const entries = fs.readdirSync(fullPath).map((name) => {
+          const childPath = path.join(fullPath, name);
+          const childStat = fs.lstatSync(childPath);
+          return { name, isDirectory: childStat.isDirectory() };
+        });
+        const payload = { path: requestedPath, entries, isDirectory: true };
+        if (typeof callback === "function") {
+          callback(payload);
+        } else {
+          socket.emit("file-content", payload);
+        }
+        return;
+      }
+
+      // Read the file content — limit to 2 MB to prevent hanging
+      if (stat.size > 2 * 1024 * 1024) {
+        const errPayload = {
+          error: `File too large (${stat.size} bytes): ${requestedPath}`,
+        };
+        if (typeof callback === "function") {
+          callback(errPayload);
+        } else {
+          socket.emit("file-content-error", errPayload);
+        }
+        return;
+      }
+
+      const content = fs.readFileSync(fullPath, "utf8");
+      const payload = {
+        path: requestedPath,
+        content,
+        isDirectory: false,
+      };
+
+      if (typeof callback === "function") {
+        callback(payload);
+      } else {
+        socket.emit("file-content", payload);
+      }
+    } catch (e) {
+      const errPayload = {
+        error: `Failed to read ${requestedPath}: ${e.message}`,
+      };
+      if (typeof callback === "function") {
+        callback(errPayload);
+      } else {
+        socket.emit("file-content-error", errPayload);
+      }
+    }
+  });
+
   socket.on("disconnect", () => {
     console.log("Client disconnected, cleaning up");
     if (pkgWatcher) pkgWatcher.close();
