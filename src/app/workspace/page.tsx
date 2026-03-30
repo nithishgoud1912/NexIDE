@@ -127,7 +127,6 @@ function WorkspaceContent() {
     interrupt,
     restart,
 
-    syncSize,
     updateRootPath,
     findProjectOnHost,
     openProjectPath,
@@ -358,13 +357,6 @@ function WorkspaceContent() {
     }
   };
 
-  const resetEnvironment = async () => {
-    if (!instance) return;
-    await restart(); // Full shell restart to clear stuck processes
-    setTimeout(() => {
-      sendCommand("npm install && clear");
-    }, 1000); // Give shell time to boot
-  };
 
   const handleOpenFolder = useCallback(
     async (existingHandle?: FileSystemDirectoryHandle) => {
@@ -448,7 +440,7 @@ function WorkspaceContent() {
           }
 
           setFiles(tree);
-          if (tree["package.json"]) resetEnvironment();
+
 
           // Force UI update
           setIsInitializing(false);
@@ -1869,14 +1861,6 @@ function WorkspaceContent() {
                               )}
                             </div>
                             <div className="flex items-center gap-2">
-                              <RefreshCw
-                                className={`w-3.5 h-3.5 text-zinc-500 hover:text-blue-400 cursor-pointer transition-colors active:rotate-180 duration-500`}
-                                onClick={syncSize}
-                              />
-                              <RotateCcw
-                                className="w-3.5 h-3.5 text-zinc-500 hover:text-zinc-300 cursor-pointer"
-                                onClick={resetEnvironment}
-                              />
                               <X
                                 className="w-3.5 h-3.5 text-zinc-500 hover:text-zinc-300 cursor-pointer"
                                 onClick={() => setIsTerminalVisible(false)}

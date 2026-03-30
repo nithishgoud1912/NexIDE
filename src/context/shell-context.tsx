@@ -28,7 +28,6 @@ interface ShellContextType {
   activePort: number | null;
   isLocalTerminal: boolean;
   toggleTerminalMode: () => void;
-  syncSize: () => void;
   requestTypes: (packages: string[]) => void;
   /** Request a file from the host filesystem (including node_modules) */
   requestFile: (filePath: string) => Promise<{ path: string; content: string } | null>;
@@ -721,29 +720,6 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
     console.log("[ShellContext] Cleaned up and terminal destroyed.");
   }, [interrupt]);
 
-  const syncSize = useCallback(() => {
-    if (terminalRef.current && fitAddon) {
-      try {
-        console.log("[Terminal] Performing full sync and reset...");
-        terminalRef.current.reset();
-        fitAddon.fit();
-        const dims = {
-          cols: terminalRef.current.cols,
-          rows: terminalRef.current.rows,
-        };
-        if (isLocalTerminal && localSocketRef.current) {
-          localSocketRef.current.emit("resize", dims);
-        }
-        terminalRef.current.refresh(0, terminalRef.current.rows - 1);
-        requestAnimationFrame(() => {
-          terminalRef.current?.scrollToBottom();
-        });
-        console.log(`[Terminal] Sync complete: ${dims.cols}x${dims.rows}`);
-      } catch (e) {
-        console.warn("Manual syncSize failed:", e);
-      }
-    }
-  }, [isLocalTerminal, fitAddon]);
 
   const updateRootPath = useCallback((path: string) => {
     if (localSocketRef.current) {
@@ -819,7 +795,6 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
       activePort,
       isLocalTerminal,
       toggleTerminalMode,
-      syncSize,
       destroy,
       requestTypes: (packages: string[]) => {
         if (localSocketRef.current) {
@@ -846,7 +821,6 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
       activePort,
       isLocalTerminal,
       toggleTerminalMode,
-      syncSize,
       destroy,
       requestFile,
       updateRootPath,

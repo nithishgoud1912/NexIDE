@@ -372,16 +372,7 @@ export function SettingsWidget({ children }: SettingsWidgetProps) {
             </div>
 
             {shell && (
-              <div className="grid grid-cols-2 gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => shell.syncSize()}
-                  className="h-7 text-[10px] justify-center bg-secondary border-border hover:bg-white/10 text-foreground"
-                >
-                  <Terminal className="w-3 h-3 mr-1.5" />
-                  Fix Term Size
-                </Button>
+              <div className="grid grid-cols-1 gap-2">
                 <Button
                   variant="ghost"
                   size="sm"
