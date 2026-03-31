@@ -300,6 +300,8 @@ function getLanguageFromPath(name?: string): string {
       return "graphql";
     case "dockerfile":
       return "dockerfile";
+    case "vue":
+      return "vue";
     default:
       if (name.toLowerCase() === "dockerfile") return "dockerfile";
       if (name.toLowerCase().includes(".gitignore")) return "plaintext";
