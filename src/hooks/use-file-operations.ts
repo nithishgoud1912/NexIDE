@@ -82,7 +82,7 @@ export function useFileOperations({
       try {
         const content = await instance.fs.readFile(path, "utf-8");
         const fileName = path.split("/").pop() || path;
-        addOpenFile({ path, name: fileName, content });
+        addOpenFile({ path, name: fileName });
         setActiveFilePath(path);
       } catch (err) {
         console.error("Failed to read file:", err);
