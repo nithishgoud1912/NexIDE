@@ -52,7 +52,7 @@ export function useAutoSave({
             const currentFile = openFilesRef.current.find(
               (f) => f.path === path,
             );
-            if (currentFile && currentFile.content === content) {
+            if (currentFile && !saveQueueRef.current.has(path)) {
               markFileSaved(path);
             }
           }, 50);
