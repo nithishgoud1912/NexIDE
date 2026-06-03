@@ -41,14 +41,16 @@ const tokenPath = path.join(process.cwd(), ".pty-token");
 try {
   fs.writeFileSync(tokenPath, token, { mode: 0o600 });
   console.log("[PTY Server] Ephemeral token generated and saved to .pty-token");
-  
+
   // Clean up token on exit
   const cleanup = () => {
-    try { if (fs.existsSync(tokenPath)) fs.unlinkSync(tokenPath); } catch(e){}
+    try {
+      if (fs.existsSync(tokenPath)) fs.unlinkSync(tokenPath);
+    } catch (e) {}
     process.exit();
   };
-  process.on('SIGINT', cleanup);
-  process.on('SIGTERM', cleanup);
+  process.on("SIGINT", cleanup);
+  process.on("SIGTERM", cleanup);
 } catch (e) {
   console.error("[PTY Server] Failed to write .pty-token:", e);
 }
@@ -373,7 +375,10 @@ io.on("connection", (socket) => {
       socket.emit("error", "Invalid project path");
       return;
     }
-    if (fs.existsSync(absolutePath) && fs.lstatSync(absolutePath).isDirectory()) {
+    if (
+      fs.existsSync(absolutePath) &&
+      fs.lstatSync(absolutePath).isDirectory()
+    ) {
       startProjectServices(absolutePath);
       setupPty(absolutePath);
       socket.emit("root-path", absolutePath);
@@ -389,7 +394,10 @@ io.on("connection", (socket) => {
       return;
     }
     if (!fs.existsSync(newPath) || !fs.lstatSync(newPath).isDirectory()) {
-      socket.emit("error", `Path does not exist or is not a directory: ${newPath}`);
+      socket.emit(
+        "error",
+        `Path does not exist or is not a directory: ${newPath}`,
+      );
       return;
     }
     startProjectServices(newPath);
@@ -433,7 +441,7 @@ io.on("connection", (socket) => {
       path.join(home, "Development"),
       path.join(home, "source", "repos"),
       "C:\\projects",
-      "D:\\projects"
+      "D:\\projects",
     ];
 
     const allRoots = [...new Set([...contextRoots, ...commonRoots])];
@@ -443,7 +451,7 @@ io.on("connection", (socket) => {
       if (currentDepth > maxDepth) return null;
       try {
         if (!fs.existsSync(dir)) return null;
-        
+
         // Check direct child first
         const potential = path.join(dir, targetName);
         if (fs.existsSync(potential) && fs.lstatSync(potential).isDirectory()) {
@@ -453,9 +461,18 @@ io.on("connection", (socket) => {
         // If not found, check subdirectories (except hidden or node_modules)
         const entries = fs.readdirSync(dir, { withFileTypes: true });
         for (const entry of entries) {
-          if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules') {
+          if (
+            entry.isDirectory() &&
+            !entry.name.startsWith(".") &&
+            entry.name !== "node_modules"
+          ) {
             const subDir = path.join(dir, entry.name);
-            const found = findFolderRecursive(subDir, targetName, currentDepth + 1, maxDepth);
+            const found = findFolderRecursive(
+              subDir,
+              targetName,
+              currentDepth + 1,
+              maxDepth,
+            );
             if (found) return found;
           }
         }
@@ -522,7 +539,9 @@ io.on("connection", (socket) => {
       const normalizedProject = path.resolve(currentProjectPath);
 
       if (!fullPath.startsWith(normalizedProject)) {
-        const errPayload = { error: "Access denied: path outside project directory" };
+        const errPayload = {
+          error: "Access denied: path outside project directory",
+        };
         if (typeof callback === "function") callback(errPayload);
         else socket.emit("file-content-error", errPayload);
         return;

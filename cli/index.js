@@ -396,23 +396,65 @@ io.on("connection", (socket) => {
       path.join(home, "OneDrive", "Desktop"),
       path.join(home, "OneDrive", "Documents"),
       path.join(home, "Downloads"),
+      path.join(home, "Projects"),
+      path.join(home, "Development"),
+      path.join(home, "source", "repos"),
+      "C:\\projects",
+      "D:\\projects",
     ];
 
     const allRoots = [...new Set([...contextRoots, ...commonRoots])];
 
-    for (const root of allRoots) {
+    // Helper for shallow recursive search
+    const findFolderRecursive = (dir, targetName, currentDepth, maxDepth) => {
+      if (currentDepth > maxDepth) return null;
       try {
-        if (!fs.existsSync(root)) continue;
-        const potential = path.join(root, folderName);
+        if (!fs.existsSync(dir)) return null;
+
+        // Check direct child first
+        const potential = path.join(dir, targetName);
         if (fs.existsSync(potential) && fs.lstatSync(potential).isDirectory()) {
-          socket.emit("project-located", potential);
-          socket.emit("root-path", potential);
-          setupPty(potential);
-          startProjectServices(potential);
-          return;
+          return potential;
         }
-      } catch (e) {}
+
+        // If not found, check subdirectories (except hidden or node_modules)
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (
+            entry.isDirectory() &&
+            !entry.name.startsWith(".") &&
+            entry.name !== "node_modules"
+          ) {
+            const subDir = path.join(dir, entry.name);
+            const found = findFolderRecursive(
+              subDir,
+              targetName,
+              currentDepth + 1,
+              maxDepth,
+            );
+            if (found) return found;
+          }
+        }
+      } catch (e) {
+        // Ignore access errors
+      }
+      return null;
+    };
+
+    for (const root of allRoots) {
+      // Search up to 3 levels deep in each root
+      const located = findFolderRecursive(root, folderName, 1, 3);
+      if (located) {
+        console.log(`[NexIDE] Located project at: ${located}`);
+        socket.emit("project-located", located);
+        socket.emit("root-path", located);
+        setupPty(located);
+        startProjectServices(located);
+        return;
+      }
     }
+
+    console.warn(`[NexIDE] Could not find project "${folderName}" in roots (depth 3)`);
     socket.emit("project-not-found", folderName);
   });
 

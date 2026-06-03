@@ -30,7 +30,9 @@ interface ShellContextType {
   toggleTerminalMode: () => void;
   requestTypes: (packages: string[]) => void;
   /** Request a file from the host filesystem (including node_modules) */
-  requestFile: (filePath: string) => Promise<{ path: string; content: string } | null>;
+  requestFile: (
+    filePath: string,
+  ) => Promise<{ path: string; content: string } | null>;
   updateRootPath: (path: string) => void;
   findProjectOnHost: (name: string) => void;
   openProjectPath: (path: string) => void;
@@ -80,197 +82,197 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
     if (localSocketRef.current) return localSocketRef.current;
 
     try {
-      const res = await fetch("/api/pty-token");
-      if (!res.ok) {
-        console.error("[Shell] Failed to fetch PTY token");
-        return null;
-      }
-      const data = await res.json();
-      const token = data.token;
-
       const ptyUrl = process.env.NEXT_PUBLIC_PTY_URL || "http://localhost:3001";
       console.log(`[Shell] Connecting to PTY at ${ptyUrl}...`);
       const socket = io(ptyUrl, {
-        auth: { token },
+        transports: ["websocket"],
       });
       localSocketRef.current = socket;
 
-    socket.on("connect", () => {
-      console.log("[PTY Server] Connected for types and sync.");
-    });
-
-    socket.on("type-definition", ({ name, path, content }) => {
-      const monaco = (window as any).monaco;
-      const tsLanguages = monaco?.languages?.typescript as any;
-      if (tsLanguages?.typescriptDefaults) {
-        tsLanguages.typescriptDefaults.addExtraLib(content, `file:///${path}`);
-        console.log(`[ShellContext] Injected types for ${name}`);
-      }
-    });
-
-    socket.on("file-sync", async ({ path, content }) => {
-      const monaco = (window as any).monaco;
-
-      // 1. Mirror to WebContainer (The "Reverse Bridge")
-      // We strip the file:/// prefix to get the relative path for the container
-      // The PTY sends file:///src/App.tsx -> we want src/App.tsx
-      if (currentInstanceRef.current) {
-        try {
-          const relativePath = path.replace("file:///", "");
-          await currentInstanceRef.current.fs.writeFile(relativePath, content);
-          // console.log(`[ShellContext] Mirrored ${relativePath} to WebContainer`);
-        } catch (e) {
-          console.warn(
-            `[ShellContext] Failed to mirror ${path} to WebContainer`,
-            e,
-          );
-        }
-      }
-
-      if (!monaco) return;
-
-      // Check if user recently edited this file
-      const lastEditTime = userEditTimestampsRef.current.get(path);
-      const now = Date.now();
-
-      // Increased grace period and added active editor check
-      if (lastEditTime && now - lastEditTime < FILE_SYNC_GRACE_PERIOD) {
-        // console.log(`[ShellContext] Skipping file-sync for ${path} - user is active`);
-        return;
-      }
-
-      const currentActivePath = useIDEStore.getState().activeFilePath;
-      if (currentActivePath && path.endsWith(currentActivePath)) {
-        return;
-      }
-
-      // Verify if any editor currently has this path open and focused
-      const editors = monaco.editor.getEditors();
-      const isActiveInEditor = editors.some((editor: any) => {
-        const model = editor.getModel();
-        return (
-          model &&
-          model.uri.toString() === monaco.Uri.parse(path).toString() &&
-          editor.hasTextFocus()
-        );
+      socket.on("connect", () => {
+        console.log("[PTY Server] Connected for types and sync.");
       });
 
-      if (isActiveInEditor) {
-        return;
-      }
+      socket.on("type-definition", ({ name, path, content }) => {
+        const monaco = (window as any).monaco;
+        const tsLanguages = monaco?.languages?.typescript as any;
+        if (tsLanguages?.typescriptDefaults) {
+          tsLanguages.typescriptDefaults.addExtraLib(
+            content,
+            `file:///${path}`,
+          );
+          console.log(`[ShellContext] Injected types for ${name}`);
+        }
+      });
 
-      const uri = monaco.Uri.parse(path);
-      let model = monaco.editor.getModel(uri);
+      socket.on("file-sync", async ({ path, content }) => {
+        const monaco = (window as any).monaco;
 
-      if (model) {
-        const currentValue = model.getValue();
-        // Only update if content is different
-        if (currentValue !== content) {
-          // Update model logic remains the same...
-          // Use pushEditOperations for smoother updates if it's visible but not focused
+        // 1. Mirror to WebContainer (The "Reverse Bridge")
+        // We strip the file:/// prefix to get the relative path for the container
+        // The PTY sends file:///src/App.tsx -> we want src/App.tsx
+        if (currentInstanceRef.current) {
+          try {
+            const relativePath = path.replace("file:///", "");
+            await currentInstanceRef.current.fs.writeFile(
+              relativePath,
+              content,
+            );
+            // console.log(`[ShellContext] Mirrored ${relativePath} to WebContainer`);
+          } catch (e) {
+            console.warn(
+              `[ShellContext] Failed to mirror ${path} to WebContainer`,
+              e,
+            );
+          }
+        }
+
+        if (!monaco) return;
+
+        // Check if user recently edited this file
+        const lastEditTime = userEditTimestampsRef.current.get(path);
+        const now = Date.now();
+
+        // Increased grace period and added active editor check
+        if (lastEditTime && now - lastEditTime < FILE_SYNC_GRACE_PERIOD) {
+          // console.log(`[ShellContext] Skipping file-sync for ${path} - user is active`);
+          return;
+        }
+
+        const currentActivePath = useIDEStore.getState().activeFilePath;
+        if (currentActivePath && path.endsWith(currentActivePath)) {
+          return;
+        }
+
+        // Verify if any editor currently has this path open and focused
+        const editors = monaco.editor.getEditors();
+        const isActiveInEditor = editors.some((editor: any) => {
+          const model = editor.getModel();
+          return (
+            model &&
+            model.uri.toString() === monaco.Uri.parse(path).toString() &&
+            editor.hasTextFocus()
+          );
+        });
+
+        if (isActiveInEditor) {
+          return;
+        }
+
+        const uri = monaco.Uri.parse(path);
+        let model = monaco.editor.getModel(uri);
+
+        if (model) {
+          const currentValue = model.getValue();
+          // Only update if content is different
+          if (currentValue !== content) {
+            // Update model logic remains the same...
+            // Use pushEditOperations for smoother updates if it's visible but not focused
+            model.pushEditOperations(
+              [],
+              [
+                {
+                  range: model.getFullModelRange(),
+                  text: content,
+                },
+              ],
+              () => null,
+            );
+          }
+        } else {
+          // Create new model
+          const ext = path.split(".").pop()?.toLowerCase();
+          const lang =
+            ext === "ts"
+              ? "typescript"
+              : ext === "tsx"
+                ? "typescriptreact"
+                : ext === "js"
+                  ? "javascript"
+                  : ext === "jsx"
+                    ? "javascriptreact"
+                    : "typescript";
+
+          monaco.editor.createModel(content, lang, uri);
+        }
+      });
+
+      socket.on("project-located", (absolutePath: string) => {
+        console.log(`[ShellContext] Project auto-located at ${absolutePath}`);
+        if (typeof window !== "undefined") {
+          const event = new CustomEvent("project-located", {
+            detail: absolutePath,
+          });
+          window.dispatchEvent(event);
+        }
+      });
+
+      socket.on("root-path", (path: string) => {
+        console.log(`[ShellContext] Backend root confirmed at: ${path}`);
+        if (typeof window !== "undefined") {
+          const event = new CustomEvent("root-path-confirmed", {
+            detail: path,
+          });
+          window.dispatchEvent(event);
+        }
+      });
+
+      socket.on("project-not-found", (folderName: string) => {
+        console.warn(
+          `[ShellContext] Backend could not find folder: ${folderName}`,
+        );
+        if (typeof window !== "undefined") {
+          const event = new CustomEvent("project-not-found", {
+            detail: folderName,
+          });
+          window.dispatchEvent(event);
+        }
+      });
+
+      // Listen for file-content events (for on-demand node_modules file loading)
+      socket.on("file-content", ({ path: filePath, content, isDirectory }) => {
+        if (isDirectory || !content) return;
+
+        const monaco = (window as any).monaco;
+        if (!monaco) return;
+
+        // Determine the URI — node_modules files use file:///node_modules/...
+        const uri = monaco.Uri.parse(`file:///${filePath}`);
+        let model = monaco.editor.getModel(uri);
+
+        if (!model) {
+          // Detect language from extension
+          const ext = filePath.split(".").pop()?.toLowerCase();
+          const langMap: Record<string, string> = {
+            ts: "typescript",
+            tsx: "typescriptreact",
+            js: "javascript",
+            jsx: "javascriptreact",
+            json: "json",
+            css: "css",
+            scss: "scss",
+            html: "html",
+            md: "markdown",
+            mjs: "javascript",
+            cjs: "javascript",
+            d: "typescript", // for .d.ts files
+          };
+          // Handle .d.ts specifically
+          const isDts = filePath.endsWith(".d.ts");
+          const lang = isDts ? "typescript" : langMap[ext || ""] || "plaintext";
+
+          model = monaco.editor.createModel(content, lang, uri);
+          console.log(`[ShellContext] Created Monaco model for ${filePath}`);
+        } else if (model.getValue() !== content) {
           model.pushEditOperations(
             [],
-            [
-              {
-                range: model.getFullModelRange(),
-                text: content,
-              },
-            ],
+            [{ range: model.getFullModelRange(), text: content }],
             () => null,
           );
         }
-      } else {
-        // Create new model
-        const ext = path.split(".").pop()?.toLowerCase();
-        const lang =
-          ext === "ts"
-            ? "typescript"
-            : ext === "tsx"
-              ? "typescriptreact"
-              : ext === "js"
-                ? "javascript"
-                : ext === "jsx"
-                  ? "javascriptreact"
-                  : "typescript";
+      });
 
-        monaco.editor.createModel(content, lang, uri);
-      }
-    });
-
-    socket.on("project-located", (absolutePath: string) => {
-      console.log(`[ShellContext] Project auto-located at ${absolutePath}`);
-      if (typeof window !== "undefined") {
-        const event = new CustomEvent("project-located", {
-          detail: absolutePath,
-        });
-        window.dispatchEvent(event);
-      }
-    });
-
-    socket.on("root-path", (path: string) => {
-      console.log(`[ShellContext] Backend root confirmed at: ${path}`);
-      if (typeof window !== "undefined") {
-        const event = new CustomEvent("root-path-confirmed", { detail: path });
-        window.dispatchEvent(event);
-      }
-    });
-
-    socket.on("project-not-found", (folderName: string) => {
-      console.warn(
-        `[ShellContext] Backend could not find folder: ${folderName}`,
-      );
-      if (typeof window !== "undefined") {
-        const event = new CustomEvent("project-not-found", {
-          detail: folderName,
-        });
-        window.dispatchEvent(event);
-      }
-    });
-
-    // Listen for file-content events (for on-demand node_modules file loading)
-    socket.on("file-content", ({ path: filePath, content, isDirectory }) => {
-      if (isDirectory || !content) return;
-
-      const monaco = (window as any).monaco;
-      if (!monaco) return;
-
-      // Determine the URI — node_modules files use file:///node_modules/...
-      const uri = monaco.Uri.parse(`file:///${filePath}`);
-      let model = monaco.editor.getModel(uri);
-
-      if (!model) {
-        // Detect language from extension
-        const ext = filePath.split(".").pop()?.toLowerCase();
-        const langMap: Record<string, string> = {
-          ts: "typescript",
-          tsx: "typescriptreact",
-          js: "javascript",
-          jsx: "javascriptreact",
-          json: "json",
-          css: "css",
-          scss: "scss",
-          html: "html",
-          md: "markdown",
-          mjs: "javascript",
-          cjs: "javascript",
-          d: "typescript", // for .d.ts files
-        };
-        // Handle .d.ts specifically
-        const isDts = filePath.endsWith(".d.ts");
-        const lang = isDts ? "typescript" : (langMap[ext || ""] || "plaintext");
-
-        model = monaco.editor.createModel(content, lang, uri);
-        console.log(`[ShellContext] Created Monaco model for ${filePath}`);
-      } else if (model.getValue() !== content) {
-        model.pushEditOperations(
-          [],
-          [{ range: model.getFullModelRange(), text: content }],
-          () => null,
-        );
-      }
-    });
-
-    return socket;
+      return socket;
     } catch (e) {
       console.error("[Shell] Failed to initialize socket:", e);
       return null;
@@ -525,7 +527,7 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
       terminalRef.current = xterm;
 
       // 1. Use the existing Long-lived Socket
-      const socket = await initSocket() as any;
+      const socket = (await initSocket()) as any;
       if (!socket) {
         throw new Error("Local PTY Server socket could not be initialized");
       }
@@ -734,7 +736,6 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
     console.log("[ShellContext] Cleaned up and terminal destroyed.");
   }, [interrupt]);
 
-
   const updateRootPath = useCallback((path: string) => {
     if (localSocketRef.current) {
       (localSocketRef.current as any).emit("chdir", path);
@@ -774,11 +775,17 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
           filePath,
           (response: { path?: string; content?: string; error?: string }) => {
             if (response?.error || !response?.content) {
-              console.warn(`[ShellContext] Failed to fetch file ${filePath}:`, response?.error);
+              console.warn(
+                `[ShellContext] Failed to fetch file ${filePath}:`,
+                response?.error,
+              );
               resolve(null);
               return;
             }
-            resolve({ path: response.path || filePath, content: response.content });
+            resolve({
+              path: response.path || filePath,
+              content: response.content,
+            });
           },
         );
 
