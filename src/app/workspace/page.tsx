@@ -1435,10 +1435,10 @@ function WorkspaceContent() {
                                         updateFileContent(activeFilePath, val);
                                         if (!unsavedFiles.has(activeFilePath))
                                           markFileUnsaved(activeFilePath);
-                                        // Auto-save logic simplified for brevity - assumes existing debouncer handles standard flow or we replicate it
-                                        // Ideally we reuse a handleContentChange function
-                                        if (isAutoSave)
-                                          saveFile(activeFilePath, val); // simple auto save
+                                      }}
+                                      onSave={(val) => {
+                                        updateFileContent(activeFilePath, val);
+                                        saveFile(activeFilePath, val);
                                       }}
                                     />
                                   </LocalErrorBoundary>
@@ -1523,8 +1523,13 @@ function WorkspaceContent() {
                                           markFileUnsaved(
                                             secondaryActiveFilePath,
                                           );
-                                        if (isAutoSave)
-                                          saveFile(secondaryActiveFilePath, val);
+                                      }}
+                                      onSave={(val) => {
+                                        updateFileContent(
+                                          secondaryActiveFilePath,
+                                          val,
+                                        );
+                                        saveFile(secondaryActiveFilePath, val);
                                       }}
                                     />
                                   </LocalErrorBoundary>
