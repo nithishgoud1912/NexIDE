@@ -4,7 +4,6 @@ import { persist, createJSONStorage } from "zustand/middleware";
 export interface OpenFile {
   path: string;
   name: string;
-  content: string | Uint8Array;
 }
 
 interface IDEState {
@@ -50,7 +49,6 @@ interface IDEState {
   addOpenFile: (file: OpenFile) => void;
   closeFile: (path: string) => void;
   closeAllFiles: () => void;
-  updateFileContent: (path: string, content: string | Uint8Array) => void;
 }
 
 export const useIDEStore = create<IDEState>()(
@@ -116,14 +114,9 @@ export const useIDEStore = create<IDEState>()(
       addOpenFile: (file: OpenFile) =>
         set((state) => {
           if (state.openFiles.find((f) => f.path === file.path)) {
-            // Update existing file content instead of ignoring
-            return {
-              openFiles: state.openFiles.map((f) =>
-                f.path === file.path ? { ...f, content: file.content } : f,
-              ),
-            };
+            return state;
           }
-          return { openFiles: [...state.openFiles, file] };
+          return { openFiles: [...state.openFiles, { path: file.path, name: file.name }] };
         }),
 
       closeFile: (path: string) =>
@@ -160,13 +153,6 @@ export const useIDEStore = create<IDEState>()(
           secondaryActiveFilePath: null,
           unsavedFiles: new Set(),
         }),
-
-      updateFileContent: (path: string, content: string | Uint8Array) =>
-        set((state) => ({
-          openFiles: state.openFiles.map((f) =>
-            f.path === path ? { ...f, content } : f,
-          ),
-        })),
     }),
     {
       name: "nexide-storage",
@@ -178,11 +164,10 @@ export const useIDEStore = create<IDEState>()(
         activeFilePath: state.activeFilePath,
         secondaryActiveFilePath: state.secondaryActiveFilePath,
         activeEditor: state.activeEditor,
-        // Only persist paths, not content (content is re-read from FS on open)
+        // Only persist paths and names
         openFiles: state.openFiles.map((f) => ({
           path: f.path,
           name: f.name,
-          content: typeof f.content === "string" ? "" : "",
         })),
         isAutoSave: state.isAutoSave,
         autoSaveDelay: state.autoSaveDelay,

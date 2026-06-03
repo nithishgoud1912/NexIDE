@@ -7578,9 +7578,11 @@ function getTokenizationEnv(model) {
       _t.grammarTokens ||
       // monaco-editor 0.52.0
       _t._tokens ||
-      // monaco-editor >= 0.53.0
-      ((_a = _t.tokens) === null || _a === void 0 ? void 0 : _a._value);
-    if (_tokens) {
+      // monaco-editor >= 0.53.0 (._value shape)
+      ((_a = _t.tokens) === null || _a === void 0 ? void 0 : _a._value) ||
+      // monaco-editor >= 0.55.0 (direct .tokens shape)
+      ((_a = _t.tokens) === null || _a === void 0 ? void 0 : _a);
+    if (_tokens && _tokens._defaultBackgroundTokenizer) {
       _tokenization = _tokens._defaultBackgroundTokenizer;
       _tokenizationStateStore = _tokenization._tokenizerWithStateStore;
     } else {
@@ -7588,16 +7590,20 @@ function getTokenizationEnv(model) {
       Object.values(_t).some(
         (val) => (_tokenization = val.tokenizeViewport && val),
       );
-      Object.values(_tokenization).some(
-        (val) => (_tokenizationStateStore = val.tokenizationSupport && val),
-      );
+      if (_tokenization) {
+        Object.values(_tokenization).some(
+          (val) => (_tokenizationStateStore = val.tokenizationSupport && val),
+        );
+      }
     }
   }
+  if (!_tokenizationStateStore) return null;
   const _tokenizationSupport =
     // monaco-editor >= 0.32.0
     _tokenizationStateStore.tokenizationSupport ||
     // monaco-editor <= 0.31.0
-    _tokenization._tokenizationSupport;
+    (_tokenization && _tokenization._tokenizationSupport);
+  if (!_tokenizationSupport) return null;
   const env = {
     _stateStore: _tokenizationStateStore,
     _support: _tokenizationSupport,
@@ -7613,33 +7619,44 @@ function isValidLocationForEmmetAbbreviation(
   syntax,
   language,
 ) {
-  var _a;
-  const { column, lineNumber } = position;
-  // get current line's tokens
-  const { _stateStore, _support } = getTokenizationEnv(model);
-  // monaco-editor < 0.37.0 uses `getBeginState` while monaco-editor >= 0.37.0 uses `getStartState`
-  // note: lineNumber difference between two api
-  const state =
-    ((_a = _stateStore.getBeginState) === null || _a === void 0
-      ? void 0
-      : _a.call(_stateStore, lineNumber - 1).clone()) ||
-    _stateStore.getStartState(lineNumber).clone();
-  const tokenizationResult = _support.tokenize(
-    model.getLineContent(lineNumber),
-    true,
-    state,
-    0,
-  );
-  const tokens = tokenizationResult.tokens;
-  let valid = false;
-  // get token type at current column
-  for (let i = tokens.length - 1; i >= 0; i--) {
-    if (column - 1 > tokens[i].offset) {
-      valid = isValidEmmetToken(tokens, i, syntax, language);
-      break;
+  try {
+    var _a;
+    const { column, lineNumber } = position;
+    // get current line's tokens
+    const env = getTokenizationEnv(model);
+    // If Monaco internals changed and we can't get the tokenization env, bail safely.
+    if (!env || !env._stateStore || !env._support) return false;
+    const { _stateStore, _support } = env;
+    // monaco-editor < 0.37.0 uses `getBeginState` while monaco-editor >= 0.37.0 uses `getStartState`
+    // note: lineNumber difference between two api
+    const beginState =
+      ((_a = _stateStore.getBeginState) === null || _a === void 0
+        ? void 0
+        : _a.call(_stateStore, lineNumber - 1)) ||
+      _stateStore.getStartState(lineNumber);
+    // Bail if state is undefined — line not yet tokenized or Monaco API changed.
+    if (!beginState || typeof beginState.clone !== 'function') return false;
+    const state = beginState.clone();
+    const tokenizationResult = _support.tokenize(
+      model.getLineContent(lineNumber),
+      true,
+      state,
+      0,
+    );
+    const tokens = tokenizationResult.tokens;
+    let valid = false;
+    // get token type at current column
+    for (let i = tokens.length - 1; i >= 0; i--) {
+      if (column - 1 > tokens[i].offset) {
+        valid = isValidEmmetToken(tokens, i, syntax, language);
+        break;
+      }
     }
+    return valid;
+  } catch {
+    // Monaco internals changed in v0.55 — degrade gracefully instead of crashing.
+    return false;
   }
-  return valid;
 }
 
 // https://github.com/microsoft/vscode/blob/main/extensions/emmet/src/util.ts#L86

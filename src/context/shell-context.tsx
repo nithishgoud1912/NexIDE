@@ -75,17 +75,25 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
   }, [isLocalTerminal]);
 
   // Helper to ensure socket is initialized once
-  const initSocket = useCallback(() => {
+  const initSocket = useCallback(async () => {
     if (typeof window === "undefined") return null;
     if (localSocketRef.current) return localSocketRef.current;
 
-    // In production (Render), the PTY server runs on the same port as Next.js.
-    // Pass undefined/empty to socket.io-client to connect to the same origin.
-    // For local dev, set NEXT_PUBLIC_PTY_URL=http://localhost:3001
-    const ptyUrl = process.env.NEXT_PUBLIC_PTY_URL || "http://localhost:3001";
-    console.log(`[Shell] Connecting to PTY at ${ptyUrl}...`);
-    const socket = io(ptyUrl);
-    localSocketRef.current = socket;
+    try {
+      const res = await fetch("/api/pty-token");
+      if (!res.ok) {
+        console.error("[Shell] Failed to fetch PTY token");
+        return null;
+      }
+      const data = await res.json();
+      const token = data.token;
+
+      const ptyUrl = process.env.NEXT_PUBLIC_PTY_URL || "http://localhost:3001";
+      console.log(`[Shell] Connecting to PTY at ${ptyUrl}...`);
+      const socket = io(ptyUrl, {
+        auth: { token },
+      });
+      localSocketRef.current = socket;
 
     socket.on("connect", () => {
       console.log("[PTY Server] Connected for types and sync.");
@@ -263,6 +271,10 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
     });
 
     return socket;
+    } catch (e) {
+      console.error("[Shell] Failed to initialize socket:", e);
+      return null;
+    }
   }, []);
 
   // 1. Establish Long-lived Connection to Local PTY Server for Types & Sync
@@ -513,7 +525,7 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
       terminalRef.current = xterm;
 
       // 1. Use the existing Long-lived Socket
-      const socket = initSocket() as any;
+      const socket = await initSocket() as any;
       if (!socket) {
         throw new Error("Local PTY Server socket could not be initialized");
       }
@@ -619,13 +631,15 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
       currentInstanceRef.current = instance;
       setCurrentInstance(instance);
 
-      // Start the headless preview server
-      await bootPreviewServer(instance);
-
       // Boot the LOCAL terminal for user interaction (if not already)
       if (!isLocalTerminal) {
         bootLocal();
       }
+
+      // Start the headless preview server in the background without blocking
+      bootPreviewServer(instance).catch((e) =>
+        console.error("Failed to start preview server", e),
+      );
     },
     [bootPreviewServer, isLocalTerminal, bootLocal],
   );

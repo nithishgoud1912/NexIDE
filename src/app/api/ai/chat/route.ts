@@ -244,22 +244,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { messages, context, provider = "gemini" } = await req.json();
+    const { messages, context, provider = "groq" } = await req.json();
 
     const systemPrompt = buildSystemPrompt(context);
 
     let stream: ReadableStream;
 
     switch (provider as Provider) {
-      case "groq":
-        stream = await streamGroq(messages, systemPrompt);
+      case "gemini":
+        stream = await streamGemini(messages, systemPrompt);
         break;
       case "copilot":
         stream = await streamCopilot(messages, systemPrompt);
         break;
-      case "gemini":
+      case "groq":
       default:
-        stream = await streamGemini(messages, systemPrompt);
+        stream = await streamGroq(messages, systemPrompt);
         break;
     }
 

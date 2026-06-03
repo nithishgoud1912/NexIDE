@@ -28,13 +28,17 @@ export default function Terminal({ instance }: TerminalProps) {
 
     // Delay initial open and fit to ensure container is ready and fonts are loaded
     const timeout = setTimeout(() => {
-      if (
-        terminal &&
-        terminalRef.current &&
-        terminal.element !== terminalRef.current
-      ) {
-        terminal.open(terminalRef.current);
-        terminal.focus();
+      if (terminal && terminalRef.current) {
+        if (!terminal.element) {
+          // First time opening
+          terminal.open(terminalRef.current);
+          terminal.focus();
+        } else if (terminal.element.parentElement !== terminalRef.current) {
+          // Hot reload/remount: the container changed, but xterm is already open.
+          // Append the existing DOM element to the new container.
+          terminalRef.current.appendChild(terminal.element);
+          terminal.focus();
+        }
         try {
           fitAddon.fit();
         } catch (e) {

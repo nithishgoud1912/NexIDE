@@ -115,3 +115,50 @@ export class WorkspaceErrorBoundary extends React.Component<
     return this.props.children;
   }
 }
+
+export class LocalErrorBoundary extends React.Component<
+  ErrorBoundaryProps,
+  ErrorBoundaryState
+> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null, errorInfo: null };
+  }
+
+  static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("[LocalErrorBoundary] Caught error:", error, errorInfo);
+    this.setState({ errorInfo });
+  }
+
+  handleReset = () => {
+    this.setState({ hasError: false, error: null, errorInfo: null });
+  };
+
+  render() {
+    if (this.state.hasError) {
+      if (this.props.fallback) return this.props.fallback;
+
+      return (
+        <div className="h-full w-full flex flex-col items-center justify-center bg-black/5 p-4 border border-red-500/10 rounded-md">
+          <AlertTriangle className="w-8 h-8 text-red-500/60 mb-2" />
+          <h2 className="text-sm font-semibold text-zinc-300">Component Crashed</h2>
+          <p className="text-xs text-zinc-500 text-center mb-4 max-w-xs truncate">
+            {this.state.error?.message}
+          </p>
+          <button
+            onClick={this.handleReset}
+            className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs transition-colors"
+          >
+            <RefreshCw className="w-3 h-3" />
+            Try Again
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}

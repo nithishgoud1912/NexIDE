@@ -99,7 +99,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { FilePlus, FolderPlus, Pencil } from "lucide-react";
-import { WorkspaceErrorBoundary } from "@/components/error-boundary";
+import { WorkspaceErrorBoundary, LocalErrorBoundary } from "@/components/error-boundary";
+import { useWorkspaceShortcuts } from "@/hooks/use-workspace-shortcuts";
+import { useProjectSync } from "@/hooks/use-project-sync";
+import { useGithubClone } from "@/hooks/use-github-clone";
 import { FindInFiles } from "@/components/find-in-files";
 import { CommandPalette, CommandItem } from "@/components/command-palette";
 import { GitDiffPanel } from "@/components/git-diff-panel";
@@ -153,7 +156,6 @@ function WorkspaceContent() {
     addOpenFile,
     closeFile,
     closeAllFiles,
-    updateFileContent,
     isAutoSave,
     setIsAutoSave,
     unsavedFiles,
@@ -187,7 +189,7 @@ function WorkspaceContent() {
   const [isTerminalVisible, setIsTerminalVisible] = useState(true);
   const [isPreviewVisible, setIsPreviewVisible] = useState(false);
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
-  const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+
   const [isInitializing, setIsInitializing] = useState(true);
   const [isEditorFocused, setIsEditorFocused] = useState(false);
   const [promptDialog, setPromptDialog] = useState<{
@@ -222,46 +224,12 @@ function WorkspaceContent() {
   const [isStartingServer, setIsStartingServer] = useState(false);
   const [showPathInput, setShowPathInput] = useState(false);
   const [manualPath, setManualPath] = useState("");
-  const searchedProjectsRef = useRef<Set<string>>(new Set());
-  const syncedPathRef = useRef<string | null>(null);
-  const saveQueueRef = useRef<Map<string, string>>(new Map());
-  const isSavingRef = useRef<Set<string>>(new Set());
-  const openFilesRef = useRef(openFiles);
 
-  // Global keyboard shortcuts
-  useEffect(() => {
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      // Ctrl+Shift+F → Find in Files
-      if (e.ctrlKey && e.shiftKey && e.key === "F") {
-        e.preventDefault();
-        setIsFindInFilesOpen((v) => !v);
-        setIsCommandPaletteOpen(false);
-        setIsGitDiffOpen(false);
-      }
-      // Ctrl+Shift+G → Git Diff / Source Control
-      if (e.ctrlKey && e.shiftKey && e.key === "G") {
-        e.preventDefault();
-        setIsGitDiffOpen((v) => !v);
-        setIsFindInFilesOpen(false);
-        setIsCommandPaletteOpen(false);
-      }
-      // Ctrl+P → Command Palette
-      if (e.ctrlKey && !e.shiftKey && e.key === "p") {
-        e.preventDefault();
-        setIsCommandPaletteOpen((v) => !v);
-        setIsFindInFilesOpen(false);
-        setIsGitDiffOpen(false);
-      }
-      // Ctrl+S → Save
-      if (e.ctrlKey && !e.shiftKey && e.key === "s") {
-        e.preventDefault();
-        handleSave();
-      }
-    };
-    window.addEventListener("keydown", handleGlobalKeyDown);
-    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeFilePath, openFiles]);
+  const fileContentsRef = useRef<Record<string, string>>({});
+
+  const updateFileContent = useCallback((path: string, content: string) => {
+    fileContentsRef.current[path] = content;
+  }, []);
 
   // File Watcher for Sync Lock (Stability)
   useEffect(() => {
@@ -273,14 +241,26 @@ function WorkspaceContent() {
     const watchFile = (path: string, pane: "primary" | "secondary") => {
       try {
         return instance.fs.watch(path, async (event) => {
-          // Sync Lock: Ignore external updates if this editor is focused
-          if (isEditorFocused && activeEditor === pane) {
-            return;
-          }
-
           try {
             // Reload content from FS
             const content = await instance.fs.readFile(path, "utf-8");
+            
+            // Sync Lock: Prompt if this editor is focused and content differs
+            if (isEditorFocused && activeEditor === pane) {
+              const currentContent = fileContentsRef.current[path];
+              if (currentContent && currentContent !== content) {
+                toast("File modified externally", {
+                  description: `${path.split('/').pop()} was changed on disk.`,
+                  action: {
+                    label: "Reload",
+                    onClick: () => updateFileContent(path, content)
+                  },
+                  duration: 8000,
+                });
+              }
+              return;
+            }
+            
             updateFileContent(path, content);
           } catch (e) {
             // File might be deleted
@@ -313,10 +293,6 @@ function WorkspaceContent() {
     updateFileContent,
   ]);
 
-  // Keep openFilesRef in sync with state
-  useEffect(() => {
-    openFilesRef.current = openFiles;
-  }, [openFiles]);
 
   // Watch for previewUrl changes to auto-navigate to current HTML file
   useEffect(() => {
@@ -435,7 +411,7 @@ function WorkspaceContent() {
           // Restore open files ONLY if same project (e.g. reload or re-open same folder)
           if (!isNewProject && openFiles.length > 0) {
             for (const file of openFiles) {
-              await instance.fs.writeFile(file.path, file.content);
+              await instance.fs.writeFile(file.path, fileContentsRef.current[file.path] || "");
             }
           }
 
@@ -493,7 +469,8 @@ function WorkspaceContent() {
         if (!originalContentsRef.current[path]) {
           originalContentsRef.current[path] = content;
         }
-        addOpenFile({ path, name: fileName, content });
+        fileContentsRef.current[path] = content;
+        addOpenFile({ path, name: fileName });
         setActiveFilePath(path);
       } catch (err) {
         console.error("Failed to read file:", err);
@@ -827,148 +804,30 @@ function WorkspaceContent() {
     handleOpenFolder,
   ]);
 
-  const handleCloneToLocal = async () => {
-    const repoFullName = searchParams?.get("repo");
-    if (!repoFullName || !session?.accessToken) return;
+  const { handleCloneToLocal } = useGithubClone({
+    session,
+    searchParams,
+    setShowCloneLanding,
+    setIsMounting,
+    setProjectName,
+    setRootHandle,
+    setCurrentRepoUrl,
+    setCurrentProjectId,
+    setOpenFiles,
+    setActiveFilePath,
+    handleOpenFolder,
+  });
 
-    const toastId = toast.loading(`Cloning ${repoFullName}...`, {
-      description: "Please select a local folder to save the project.",
-    });
-
-    try {
-      // 1. Ask user for a local folder
-      const { handle } = await openLocalFolder();
-
-      // Ensure we have write access
-      const status = await (
-        handle as FileSystemDirectoryHandle & {
-          requestPermission: (opts: {
-            mode: string;
-          }) => Promise<PermissionState>;
-        }
-      ).requestPermission({
-        mode: "readwrite",
-      });
-
-      if (status !== "granted") {
-        toast.error("Permission denied to write to folder.", { id: toastId });
-        return;
-      }
-
-      setShowCloneLanding(false);
-      setIsMounting(true);
-
-      toast.loading(`Cloning ${repoFullName}...`, {
-        id: toastId,
-        description: "Downloading files from GitHub...",
-      });
-
-      // 2. Fetch Zip
-      const blob = await fetchRepoZip(
-        repoFullName,
-        session.accessToken as string,
-      );
-
-      toast.loading(`Cloning ${repoFullName}...`, {
-        id: toastId,
-        description: "Extracting and writing to disk...",
-      });
-
-      // 3. Transform to tree
-      const tree = await transformZipToTree(blob);
-
-      // 4. Write to local handle
-      const { mountTreeLocally } = await import("@/lib/file-system");
-      await mountTreeLocally(handle, tree);
-
-      // 5. Update IDE state
-      setProjectName(handle.name);
-      setRootHandle(handle);
-      setCurrentRepoUrl(repoFullName);
-
-      // Save to recent projects
-      const { addRecentProject } = await import("@/lib/recent-projects");
-      const id = await addRecentProject(handle.name, handle, repoFullName);
-      setCurrentProjectId(id);
-
-      // Clear previous workspace state
-      setOpenFiles([]);
-      setActiveFilePath("");
-
-      // Trigger WebContainer mount & terminal start
-      await handleOpenFolder(handle);
-
-      toast.success("Successfully cloned to local disk!", { id: toastId });
-    } catch (err: unknown) {
-      const error = err instanceof Error ? err : new Error(String(err));
-      console.error("Clone failed:", error);
-      toast.error(`Clone failed: ${error.message}`, {
-        id: toastId,
-      });
-      setIsMounting(false);
-    }
-  };
-
-  // Listen for project-located event from the shell
-  useEffect(() => {
-    const handleProjectLocated = (event: Event) => {
-      const customEvent = event as CustomEvent<string>;
-      const path = customEvent.detail;
-      if (currentProjectId) {
-        setProjectPath(currentProjectId, path);
-      }
-      updateRootPath(path);
-    };
-
-    const handleRootConfirmed = (event: Event) => {
-      const customEvent = event as CustomEvent<string>;
-      const path = customEvent.detail;
-      syncedPathRef.current = path;
-      if (currentProjectId) {
-        setProjectPath(currentProjectId, path);
-      }
-    };
-
-    const handleProjectNotFound = (event: Event) => {
-      const customEvent = event as CustomEvent<string>;
-      console.warn(
-        `[Workspace] Project "${customEvent.detail}" not found on host machine.`,
-      );
-      setShowPathInput(true);
-    };
-
-    window.addEventListener("project-located", handleProjectLocated);
-    window.addEventListener("root-path-confirmed", handleRootConfirmed);
-    window.addEventListener("project-not-found", handleProjectNotFound);
-
-    return () => {
-      window.removeEventListener("project-located", handleProjectLocated);
-      window.removeEventListener("root-path-confirmed", handleRootConfirmed);
-      window.removeEventListener("project-not-found", handleProjectNotFound);
-    };
-  }, [currentProjectId, setProjectPath, updateRootPath]);
-
-  // Sync with host on initial load or connection
-  useEffect(() => {
-    if (!currentProjectId || !rootHandle) return;
-
-    if (currentLocalPath) {
-      if (syncedPathRef.current === currentLocalPath) return;
-      openProjectPath(currentLocalPath);
-      syncedPathRef.current = currentLocalPath;
-    } else {
-      if (!searchedProjectsRef.current.has(currentProjectId)) {
-        searchedProjectsRef.current.add(currentProjectId);
-        findProjectOnHost(rootHandle.name);
-      }
-    }
-  }, [
+  useProjectSync({
     currentProjectId,
-    currentLocalPath,
     rootHandle,
+    currentLocalPath,
+    setProjectPath,
+    updateRootPath,
     findProjectOnHost,
     openProjectPath,
-  ]);
+    setShowPathInput,
+  });
 
   const activeFile = useMemo(() => {
     return (
@@ -1002,11 +861,9 @@ function WorkspaceContent() {
         // 3. Mark as saved ONLY after both saves succeed and content hasn't changed
         if (localSaveSuccess) {
           setTimeout(() => {
-            const currentFile = openFilesRef.current.find(
-              (f) => f.path === path,
-            );
+            const currentContent = fileContentsRef.current[path];
             // Only mark saved if content hasn't changed since save started
-            if (currentFile && currentFile.content === content) {
+            if (currentContent === content) {
               markFileSaved(path);
             }
           }, 50);
@@ -1028,7 +885,7 @@ function WorkspaceContent() {
     if (!activeFilePath) return;
     const file = openFiles.find((f) => f.path === activeFilePath);
     if (!file) return;
-    await saveFile(file.path, file.content);
+    await saveFile(file.path, fileContentsRef.current[file.path] || "");
   };
 
   /**
@@ -1038,18 +895,19 @@ function WorkspaceContent() {
   const handleOpenNodeModuleFile = useCallback(
     (filePath: string, content: string) => {
       const fileName = filePath.split("/").pop() || filePath;
-      addOpenFile({ path: filePath, name: fileName, content });
+      fileContentsRef.current[filePath] = content;
+      addOpenFile({ path: filePath, name: fileName });
       setActiveFilePath(filePath);
     },
     [addOpenFile, setActiveFilePath],
   );
 
   const handleSaveAll = useCallback(async () => {
-    const unsavedParams = Array.from(unsavedFiles);
+    const unsavedParams = Array.from(unsavedFiles as Set<string>);
     for (const path of unsavedParams) {
       const file = openFiles.find((f) => f.path === path);
       if (file) {
-        await saveFile(file.path, file.content);
+        await saveFile(path, fileContentsRef.current[path] || "");
       }
     }
   }, [openFiles, saveFile, unsavedFiles]);
@@ -1097,7 +955,7 @@ function WorkspaceContent() {
         // Reload active file content if open
         if (activeFilePath) {
           try {
-            const content = await instance.fs.readFile(activeFilePath);
+            const content = await instance.fs.readFile(activeFilePath, "utf-8");
             // safe update (content is Uint8Array from fs.readFile usually, but we need string/uint8array for editor)
             // fs.readFile returns Uint8Array by default without encoding
             updateFileContent(activeFilePath, content);
@@ -1166,6 +1024,15 @@ function WorkspaceContent() {
       }
     }, 400);
   };
+
+  useWorkspaceShortcuts({
+    activeFilePath,
+    openFiles,
+    setIsFindInFilesOpen,
+    setIsCommandPaletteOpen,
+    setIsGitDiffOpen,
+    handleSave
+  });
 
   return (
     <div className="h-screen flex flex-col bg-[#09090b] text-zinc-300 overflow-hidden font-sans selection:bg-blue-500/30">
@@ -1432,8 +1299,8 @@ function WorkspaceContent() {
                     originalContents={originalContentsRef.current}
                     currentContents={Object.fromEntries(
                       openFiles
-                        .filter((f) => typeof f.content === "string")
-                        .map((f) => [f.path, f.content as string]),
+                        .filter((f) => typeof fileContentsRef.current[f.path] === "string")
+                        .map((f) => [f.path, fileContentsRef.current[f.path]]),
                     )}
                     repoUrl={
                       searchParams?.get("repo") || currentRepoUrl || undefined
@@ -1551,28 +1418,30 @@ function WorkspaceContent() {
                               </div>
                               <div className="flex-1 relative">
                                 {activeFilePath && activeFilePrimary ? (
-                                  <CodeEditor
-                                    key={activeFilePath}
-                                    initialValue={
-                                      activeFilePrimary.content as string
-                                    }
-                                    path={activeFilePath}
-                                    onFocus={() => {
-                                      setIsEditorFocused(true);
-                                      setActiveEditor("primary");
-                                    }}
-                                    onBlur={() => setIsEditorFocused(false)}
-                                    onOpenFile={handleOpenNodeModuleFile}
-                                    onChange={(val) => {
-                                      updateFileContent(activeFilePath, val);
-                                      if (!unsavedFiles.has(activeFilePath))
-                                        markFileUnsaved(activeFilePath);
-                                      // Auto-save logic simplified for brevity - assumes existing debouncer handles standard flow or we replicate it
-                                      // Ideally we reuse a handleContentChange function
-                                      if (isAutoSave)
-                                        saveFile(activeFilePath, val); // simple auto save
-                                    }}
-                                  />
+                                  <LocalErrorBoundary>
+                                    <CodeEditor
+                                      key={activeFilePath}
+                                      initialValue={
+                                        fileContentsRef.current[activeFilePath] || ""
+                                      }
+                                      path={activeFilePath}
+                                      onFocus={() => {
+                                        setIsEditorFocused(true);
+                                        setActiveEditor("primary");
+                                      }}
+                                      onBlur={() => setIsEditorFocused(false)}
+                                      onOpenFile={handleOpenNodeModuleFile}
+                                      onChange={(val) => {
+                                        updateFileContent(activeFilePath, val);
+                                        if (!unsavedFiles.has(activeFilePath))
+                                          markFileUnsaved(activeFilePath);
+                                        // Auto-save logic simplified for brevity - assumes existing debouncer handles standard flow or we replicate it
+                                        // Ideally we reuse a handleContentChange function
+                                        if (isAutoSave)
+                                          saveFile(activeFilePath, val); // simple auto save
+                                      }}
+                                    />
+                                  </LocalErrorBoundary>
                                 ) : (
                                   <div className="flex items-center justify-center h-full text-zinc-500 text-xs">
                                     Select a file
@@ -1628,35 +1497,37 @@ function WorkspaceContent() {
                               <div className="flex-1 relative">
                                 {secondaryActiveFilePath &&
                                 activeFileSecondary ? (
-                                  <CodeEditor
-                                    key={secondaryActiveFilePath}
-                                    initialValue={
-                                      activeFileSecondary.content as string
-                                    }
-                                    path={secondaryActiveFilePath}
-                                    onFocus={() => {
-                                      setIsEditorFocused(true);
-                                      setActiveEditor("secondary");
-                                    }}
-                                    onBlur={() => setIsEditorFocused(false)}
-                                    onOpenFile={handleOpenNodeModuleFile}
-                                    onChange={(val) => {
-                                      updateFileContent(
-                                        secondaryActiveFilePath,
-                                        val,
-                                      );
-                                      if (
-                                        !unsavedFiles.has(
+                                  <LocalErrorBoundary>
+                                    <CodeEditor
+                                      key={secondaryActiveFilePath}
+                                      initialValue={
+                                        fileContentsRef.current[secondaryActiveFilePath] || ""
+                                      }
+                                      path={secondaryActiveFilePath}
+                                      onFocus={() => {
+                                        setIsEditorFocused(true);
+                                        setActiveEditor("secondary");
+                                      }}
+                                      onBlur={() => setIsEditorFocused(false)}
+                                      onOpenFile={handleOpenNodeModuleFile}
+                                      onChange={(val) => {
+                                        updateFileContent(
                                           secondaryActiveFilePath,
-                                        )
-                                      )
-                                        markFileUnsaved(
-                                          secondaryActiveFilePath,
+                                          val,
                                         );
-                                      if (isAutoSave)
-                                        saveFile(secondaryActiveFilePath, val);
-                                    }}
-                                  />
+                                        if (
+                                          !unsavedFiles.has(
+                                            secondaryActiveFilePath,
+                                          )
+                                        )
+                                          markFileUnsaved(
+                                            secondaryActiveFilePath,
+                                          );
+                                        if (isAutoSave)
+                                          saveFile(secondaryActiveFilePath, val);
+                                      }}
+                                    />
+                                  </LocalErrorBoundary>
                                 ) : (
                                   <div className="flex items-center justify-center h-full text-zinc-500 text-xs">
                                     Select a file
@@ -1719,93 +1590,36 @@ function WorkspaceContent() {
                           </div>
                           <div className="flex-1 min-h-0 relative bg-background flex flex-col items-center justify-center">
                             {activeFilePath && activeFilePrimary ? (
-                              <CodeEditor
-                                key={activeFilePath}
-                                initialValue={
-                                  activeFilePrimary.content as string
-                                }
-                                path={activeFilePath}
-                                onFocus={() => {
-                                  setIsEditorFocused(true);
-                                  // Single view acts as primary
-                                  setActiveEditor("primary");
-                                }}
-                                onBlur={() => setIsEditorFocused(false)}
-                                onOpenFile={handleOpenNodeModuleFile}
-                                onChange={(content) => {
-                                  // 1. Update local state immediately (for UI responsiveness)
-                                  updateFileContent(activeFilePath, content);
-
-                                  // 2. Mark as unsaved
-                                  if (!unsavedFiles.has(activeFilePath)) {
-                                    markFileUnsaved(activeFilePath);
+                              <LocalErrorBoundary>
+                                <CodeEditor
+                                  key={activeFilePath}
+                                  initialValue={
+                                    fileContentsRef.current[activeFilePath] || ""
                                   }
+                                  path={activeFilePath}
+                                  onFocus={() => {
+                                    setIsEditorFocused(true);
+                                    // Single view acts as primary
+                                    setActiveEditor("primary");
+                                  }}
+                                  onBlur={() => setIsEditorFocused(false)}
+                                  onOpenFile={handleOpenNodeModuleFile}
+                                  onChange={(content) => {
+                                    // 1. Update local state immediately (for UI responsiveness)
+                                    updateFileContent(activeFilePath, content);
 
-                                  // 3. Queue the save operation (if auto-save enabled)
-                                  if (isAutoSave) {
-                                    // Add to save queue
-                                    saveQueueRef.current.set(
-                                      activeFilePath,
-                                      content,
-                                    );
-
-                                    // Clear existing debounce timer
-                                    if (debounceTimer.current) {
-                                      clearTimeout(debounceTimer.current);
+                                    // 2. Mark as unsaved
+                                    if (!unsavedFiles.has(activeFilePath)) {
+                                      markFileUnsaved(activeFilePath);
                                     }
-
-                                    // Set new debounce timer
-                                    debounceTimer.current = setTimeout(
-                                      async () => {
-                                        // Process all queued saves
-                                        const entries = Array.from(
-                                          saveQueueRef.current.entries(),
-                                        );
-                                        saveQueueRef.current.clear();
-
-                                        for (const [queuedPath, _] of entries) {
-                                          // Skip if already saving this file
-                                          if (
-                                            isSavingRef.current.has(queuedPath)
-                                          ) {
-                                            continue;
-                                          }
-
-                                          // Get the most recent content from ref (not the queued value)
-                                          const currentFile =
-                                            openFilesRef.current.find(
-                                              (f) => f.path === queuedPath,
-                                            );
-                                          if (!currentFile) continue;
-
-                                          try {
-                                            isSavingRef.current.add(queuedPath);
-                                            await saveFile(
-                                              queuedPath,
-                                              currentFile.content,
-                                            );
-                                          } catch (error) {
-                                            console.error(
-                                              `Failed to save ${queuedPath}:`,
-                                              error,
-                                            );
-                                          } finally {
-                                            isSavingRef.current.delete(
-                                              queuedPath,
-                                            );
-                                          }
-                                        }
-                                      },
-                                      autoSaveDelay,
-                                    );
-                                  }
-                                }}
-                                onSave={async (content) => {
-                                  // Manual save (Ctrl+S)
-                                  updateFileContent(activeFilePath, content);
-                                  await saveFile(activeFilePath, content);
-                                }}
-                              />
+                                  }}
+                                  onSave={async (content) => {
+                                    // Manual save (Ctrl+S)
+                                    updateFileContent(activeFilePath, content);
+                                    await saveFile(activeFilePath, content);
+                                  }}
+                                />
+                              </LocalErrorBoundary>
                             ) : (
                               <div className="text-center text-muted-foreground">
                                 <div className="w-16 h-16 bg-muted rounded-2xl flex items-center justify-center mx-auto mb-4">
@@ -1922,20 +1736,22 @@ function WorkspaceContent() {
                     maxSize={4000}
                     className="resizable-panel-transition"
                   >
-                    <AIChatPanel
-                      isOpen={isAIChatOpen}
-                      onClose={() => setIsAIChatOpen(false)}
-                      projectId={currentProjectId || "default"}
-                      activeFilePath={activeFilePath}
-                      activeFileContent={
-                        activeFilePrimary?.content as string | undefined
-                      }
-                      activeFileLanguage={
-                        activeFilePath
-                          ? activeFilePath.split(".").pop() || "javascript"
-                          : undefined
-                      }
-                    />
+                    <LocalErrorBoundary>
+                      <AIChatPanel
+                        isOpen={isAIChatOpen}
+                        onClose={() => setIsAIChatOpen(false)}
+                        projectId={currentProjectId || "default"}
+                        activeFilePath={activeFilePath}
+                        activeFileContent={
+                          activeFilePrimary ? fileContentsRef.current[activeFilePrimary.path] : undefined
+                        }
+                        activeFileLanguage={
+                          activeFilePath
+                            ? activeFilePath.split(".").pop() || "javascript"
+                            : undefined
+                        }
+                      />
+                    </LocalErrorBoundary>
                   </ResizablePanel>
                 </>
               )}

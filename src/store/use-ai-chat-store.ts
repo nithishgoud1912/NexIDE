@@ -43,7 +43,7 @@ export const useAIChatStore = create<AIChatState>()(
   persist(
     (set, get) => ({
       chats: {},
-      defaultProvider: "gemini",
+      defaultProvider: "groq",
 
       getChat: (projectId: string) => {
         const state = get();

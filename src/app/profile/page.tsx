@@ -1,7 +1,7 @@
 "use client";
 
 import { useSession, signIn } from "next-auth/react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import {
   Github,
@@ -34,6 +34,7 @@ interface GithubProfile {
   followers: number;
   following: number;
   created_at: string;
+  total_private_repos?: number;
 }
 
 interface Repository {
@@ -57,6 +58,8 @@ export default function ProfilePage() {
   );
   const [repos, setRepos] = useState<Repository[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isLoadingRepos, setIsLoadingRepos] = useState(false);
+  const [page, setPage] = useState(1);
   const [isGithubLinked, setIsGithubLinked] = useState(false);
 
   useEffect(() => {
@@ -64,6 +67,27 @@ export default function ProfilePage() {
       router.push("/");
     }
   }, [status, router]);
+
+  const fetchRepos = useCallback(async (pageNumber: number) => {
+    if (!session?.accessToken) return;
+    setIsLoadingRepos(true);
+    try {
+      const reposRes = await fetch(
+        `https://api.github.com/user/repos?sort=updated&per_page=10&page=${pageNumber}&type=all`,
+        {
+          headers: { Authorization: `Bearer ${session.accessToken}` },
+        },
+      );
+      if (reposRes.ok) {
+        const reposData = await reposRes.json();
+        setRepos(reposData);
+        setPage(pageNumber);
+      }
+    } catch (e) {
+      console.error("Error fetching repos:", e);
+    }
+    setIsLoadingRepos(false);
+  }, [session?.accessToken]);
 
   useEffect(() => {
     const fetchGithubData = async () => {
@@ -74,45 +98,36 @@ export default function ProfilePage() {
             headers: { Authorization: `Bearer ${session.accessToken}` },
           });
 
-          if (profileRes.ok) {
-            const profileData = await profileRes.json();
-            setGithubProfile(profileData);
-            setIsGithubLinked(true);
+            if (profileRes.ok) {
+              const profileData = await profileRes.json();
+              setGithubProfile(profileData);
+              setIsGithubLinked(true);
 
-            // Fetch Repos (Top 10 sorted by update)
-            const reposRes = await fetch(
-              "https://api.github.com/user/repos?sort=updated&per_page=10&type=all",
-              {
-                headers: { Authorization: `Bearer ${session.accessToken}` },
-              },
-            );
-            if (reposRes.ok) {
-              const reposData = await reposRes.json();
-              setRepos(reposData);
+              // Initial fetch for page 1
+              await fetchRepos(1);
+            } else {
+              console.warn(
+                "Failed to fetch GitHub profile (token might be invalid or not GitHub)",
+              );
+              setIsGithubLinked(false);
             }
-          } else {
-            console.warn(
-              "Failed to fetch GitHub profile (token might be invalid or not GitHub)",
-            );
+          } catch (e) {
+            console.error("Error fetching GitHub data:", e);
             setIsGithubLinked(false);
           }
-        } catch (e) {
-          console.error("Error fetching GitHub data:", e);
-          setIsGithubLinked(false);
         }
-      }
-      setLoading(false);
-    };
+        setLoading(false);
+      };
 
-    if (status === "loading") return;
-    if (session) {
-      fetchGithubData();
-    } else {
-      // Small timeout to avoid synchronous setState during render build phase
-      const t = setTimeout(() => setLoading(false), 0);
-      return () => clearTimeout(t);
-    }
-  }, [session, status]);
+      if (status === "loading") return;
+      if (session) {
+        fetchGithubData();
+      } else {
+        // Small timeout to avoid synchronous setState during render build phase
+        const t = setTimeout(() => setLoading(false), 0);
+        return () => clearTimeout(t);
+      }
+    }, [session, status, fetchRepos]);
 
   if (status === "loading" || loading) {
     return (
@@ -289,10 +304,10 @@ export default function ProfilePage() {
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-white flex items-center gap-2">
                   <Book className="w-5 h-5 text-blue-500" />
-                  Recent Repositories
+                  Repositories
                 </h3>
                 <span className="text-xs text-zinc-500 font-mono bg-white/5 px-2 py-1 rounded">
-                  {githubProfile?.public_repos} Public Repos
+                  {(githubProfile?.public_repos || 0) + (githubProfile?.total_private_repos || 0)} Total Repos
                 </span>
               </div>
 
@@ -364,12 +379,44 @@ export default function ProfilePage() {
                   </div>
                 ))}
 
-                {repos.length === 0 && (
+                {repos.length === 0 && !isLoadingRepos && (
                   <div className="p-8 text-center bg-[#121214] rounded-lg border border-dashed border-white/10 text-zinc-500">
                     No repositories found.
                   </div>
                 )}
+                {isLoadingRepos && (
+                  <div className="p-8 flex justify-center bg-[#121214] rounded-lg border border-white/5">
+                    <div className="w-6 h-6 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+                  </div>
+                )}
               </div>
+
+              {/* Pagination Controls */}
+              {githubProfile && ((githubProfile.public_repos || 0) + (githubProfile.total_private_repos || 0)) > 10 && (
+                <div className="flex items-center justify-between mt-6 border-t border-white/5 pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => fetchRepos(page - 1)}
+                    disabled={page === 1 || isLoadingRepos}
+                    className="bg-transparent border-white/10 text-white hover:bg-white/5 disabled:opacity-50"
+                  >
+                    <ChevronLeft className="w-4 h-4 mr-2" />
+                    Previous
+                  </Button>
+                  <span className="text-sm text-zinc-400">
+                    Page {page} of {Math.ceil(((githubProfile.public_repos || 0) + (githubProfile.total_private_repos || 0)) / 10) || 1}
+                  </span>
+                  <Button
+                    variant="outline"
+                    onClick={() => fetchRepos(page + 1)}
+                    disabled={page >= Math.ceil(((githubProfile.public_repos || 0) + (githubProfile.total_private_repos || 0)) / 10) || isLoadingRepos}
+                    className="bg-transparent border-white/10 text-white hover:bg-white/5 disabled:opacity-50"
+                  >
+                    Next
+                    <ChevronLeft className="w-4 h-4 ml-2 rotate-180" />
+                  </Button>
+                </div>
+              )}
             </>
           ) : (
             <div className="bg-[#121214] rounded-xl border border-white/5 p-12 text-center space-y-4">

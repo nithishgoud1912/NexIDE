@@ -12,6 +12,8 @@ import Link from "next/link";
 import { RecentProjectsList } from "@/components/recent-projects";
 import { DashboardActions } from "@/components/dashboard-actions";
 import { SettingsWidget } from "@/components/settings-widget";
+import { PtyStatusWidget } from "@/components/pty-status-widget";
+import { GithubStatsWidget } from "@/components/github-stats-widget";
 
 export const dynamic = "force-dynamic";
 
@@ -95,44 +97,8 @@ export default async function DashboardPage() {
 
           {/* Sidebar / Stats */}
           <div className="space-y-6">
-            <div className="bg-linear-to-br from-accent to-transparent border border-border p-6 rounded-2xl">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="font-semibold">Your Workspace</h3>
-                <Settings className="w-4 h-4 text-muted-foreground" />
-              </div>
-
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Theme</span>
-                  <span className="text-xs px-2 py-1 rounded bg-secondary border border-border">
-                    Modern Dark
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Storage</span>
-                  <span className="text-xs px-2 py-1 rounded bg-secondary border border-border text-muted-foreground italic">
-                    Local First
-                  </span>
-                </div>
-              </div>
-
-              <div className="mt-8 p-4 rounded-xl bg-blue-600/10 border border-blue-500/20">
-                <p className="text-xs text-blue-300">
-                  NexIDE is in Beta. Your local files are modified directly via
-                  the File System Access API.
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-secondary border border-border p-6 rounded-2xl">
-              <h3 className="font-semibold mb-4 text-sm uppercase tracking-widest text-muted-foreground">
-                Active Node Task
-              </h3>
-              <div className="flex items-center gap-4 text-muted-foreground">
-                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                <span className="text-sm italic">WebContainer Idle</span>
-              </div>
-            </div>
+            <GithubStatsWidget session={session} />
+            <PtyStatusWidget />
           </div>
         </div>
       </main>

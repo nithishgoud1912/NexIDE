@@ -105,31 +105,9 @@ function registerInlineCompletionProvider(monaco: Monaco) {
           return { items: [] };
         }
 
-        const lineContent = model.getLineContent(position.lineNumber);
-        const beforeCursor = lineContent.substring(0, position.column - 1);
-        if (beforeCursor.trim().length < 3) {
-          return { items: [] };
-        }
-
-        const trimmed = beforeCursor.trim();
-        if (
-          trimmed.startsWith("//") ||
-          trimmed.startsWith("/*") ||
-          trimmed.startsWith("*") ||
-          trimmed.startsWith("#")
-        ) {
-          return { items: [] };
-        }
-
-        await new Promise<void>((resolve) => {
-          if (completionDebounceTimer) clearTimeout(completionDebounceTimer);
-          completionDebounceTimer = setTimeout(resolve, 250);
-        });
-
-        if (token.isCancellationRequested) {
-          return { items: [] };
-        }
-
+        // Build prefix early so we can use total context length as the gate.
+        // Using the full prefix (not just current line) means suggestions still
+        // fire on new/empty lines as long as there is meaningful code above.
         const startLine = Math.max(1, position.lineNumber - 100);
         const prefix = model.getValueInRange({
           startLineNumber: startLine,
@@ -138,8 +116,28 @@ function registerInlineCompletionProvider(monaco: Monaco) {
           endColumn: position.column,
         });
 
+        // Need at least some real code context to suggest from
+        if (prefix.trim().length < 15) {
+          return { items: [] };
+        }
+
+        // Don't suggest inside comment lines
+        const lineContent = model.getLineContent(position.lineNumber);
+        const beforeCursor = lineContent.substring(0, position.column - 1);
+        const trimmedLine = beforeCursor.trim();
+        if (
+          trimmedLine.startsWith("//") ||
+          trimmedLine.startsWith("/*") ||
+          trimmedLine.startsWith("*") ||
+          trimmedLine.startsWith("#")
+        ) {
+          return { items: [] };
+        }
+
         const language = model.getLanguageId();
         const cacheKey = getCacheKey(prefix, language);
+
+        // Fast path: return cached suggestion immediately (no debounce needed)
         if (completionCache.has(cacheKey)) {
           const cached = completionCache.get(cacheKey)!;
           if (cached) {
@@ -160,8 +158,18 @@ function registerInlineCompletionProvider(monaco: Monaco) {
           return { items: [] };
         }
 
+        // Debounce: wait for the user to pause typing
+        await new Promise<void>((resolve) => {
+          if (completionDebounceTimer) clearTimeout(completionDebounceTimer);
+          completionDebounceTimer = setTimeout(resolve, 280);
+        });
+
+        if (token.isCancellationRequested) {
+          return { items: [] };
+        }
+
         const totalLines = model.getLineCount();
-        const endLine = Math.min(totalLines, position.lineNumber + 100);
+        const endLine = Math.min(totalLines, position.lineNumber + 80);
         const suffix = model.getValueInRange({
           startLineNumber: position.lineNumber,
           startColumn: position.column,
@@ -185,22 +193,56 @@ function registerInlineCompletionProvider(monaco: Monaco) {
             abortController.signal,
           );
 
-          if (suggestion && suffix.trim()) {
-            const trimmedSuffix = suffix.trim();
-            for (let i = Math.min(suggestion.length, 50); i > 0; i--) {
-              const suggestionEnd = suggestion.slice(-i);
-              if (trimmedSuffix.startsWith(suggestionEnd)) {
-                suggestion = suggestion.slice(0, -i);
+          if (suggestion && suffix) {
+            // Pass 1: line-level deduplication
+            // Remove any suggestion lines that already exist verbatim in the suffix.
+            // This is the main culprit when the model repeats existing code.
+            const suffixLineSet = new Set(
+              suffix
+                .split("\n")
+                .map((l: string) => l.trim())
+                .filter((l: string) => l.length > 4), // ignore tiny lines like "}"
+            );
+            const suggestionLines = suggestion.split("\n");
+            const deduped = [];
+            let trailingRepeat = false;
+            for (const line of suggestionLines) {
+              if (suffixLineSet.has(line.trim()) && line.trim().length > 4) {
+                // Once we hit a line that's already in the suffix we stop —
+                // everything after it is also likely repeated.
+                trailingRepeat = true;
                 break;
+              }
+              deduped.push(line);
+            }
+            if (!trailingRepeat || deduped.length > 0) {
+              const deduped_str = deduped.join("\n").trimEnd();
+              if (deduped_str.trim()) suggestion = deduped_str;
+              else suggestion = "";
+            }
+
+            // Pass 2: trailing boundary overlap trim (catches partial-line overlaps)
+            if (suggestion && suffix.trim()) {
+              const trimmedSuffix = suffix.trim();
+              for (let i = Math.min(suggestion.length, 300); i > 3; i--) {
+                const tail = suggestion.slice(-i);
+                if (trimmedSuffix.startsWith(tail.trimStart())) {
+                  suggestion = suggestion.slice(0, -i).trimEnd();
+                  break;
+                }
               }
             }
           }
 
-          if (completionCache.size >= MAX_CACHE_SIZE) {
-            const firstKey = completionCache.keys().next().value;
-            if (firstKey) completionCache.delete(firstKey);
+          // Only cache if not cancelled — aborted requests return "" which
+          // would poison the cache and block future suggestions at this position.
+          if (!token.isCancellationRequested) {
+            if (completionCache.size >= MAX_CACHE_SIZE) {
+              const firstKey = completionCache.keys().next().value;
+              if (firstKey) completionCache.delete(firstKey);
+            }
+            completionCache.set(cacheKey, suggestion);
           }
-          completionCache.set(cacheKey, suggestion);
 
           if (!suggestion || token.isCancellationRequested) {
             return { items: [] };
@@ -224,7 +266,9 @@ function registerInlineCompletionProvider(monaco: Monaco) {
           activeAbortController = null;
         }
       },
-      freeInlineCompletions: () => {},
+      // Monaco v0.43+ renamed freeInlineCompletions → disposeInlineCompletions.
+      // The old name causes an uncaught TypeError on every ghost-text cleanup cycle.
+      disposeInlineCompletions: () => {},
     },
   );
 }
@@ -332,9 +376,13 @@ export default function CodeEditor({
     showLineNumbers,
     wordWrap,
     emmetEnabled,
+    isAutoSave,
+    autoSaveDelay,
   } = useIDEStore();
 
   const themeToUse = storeTheme || themeProp;
+  const saveDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isSavingRef = useRef(false);
 
   const displayValue =
     typeof initialValue === "string"
@@ -549,8 +597,17 @@ export default function CodeEditor({
       };
     }
 
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-      onSave?.(editor.getValue());
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, async () => {
+      const val = editor.getValue();
+      if (onSave) {
+        isSavingRef.current = true;
+        try {
+          await onSave(val);
+          lastSavedContentRef.current = val;
+        } finally {
+          isSavingRef.current = false;
+        }
+      }
     });
 
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Space, () => {
@@ -587,7 +644,7 @@ export default function CodeEditor({
       "editorTextFocus && inlineSuggestionVisible",
     );
 
-    editor.onDidChangeModelContent(() => {
+    editor.onDidChangeModelContent((e: any) => {
       isTypingRef.current = true;
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       typingTimeoutRef.current = setTimeout(() => {
@@ -595,6 +652,21 @@ export default function CodeEditor({
       }, 2000);
       if (path && typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("user-edit", { detail: path }));
+      }
+
+      // Monaco doesn't auto-trigger provideInlineCompletions on a new empty line
+      // because there are no typed characters — only cursor movement. We detect a
+      // plain Enter press and manually fire the inline suggest trigger so the AI
+      // can suggest code based on the context above the cursor.
+      const isPlainNewline =
+        e.changes.length === 1 &&
+        (e.changes[0].text === "\n" || e.changes[0].text === "\r\n");
+      if (isPlainNewline) {
+        setTimeout(() => {
+          if (editor.hasTextFocus()) {
+            editor.trigger("keyboard", "editor.action.inlineSuggest.trigger", {});
+          }
+        }, 120);
       }
     });
 
@@ -607,6 +679,24 @@ export default function CodeEditor({
     const newValue = value || "";
     if (newValue !== lastSavedContentRef.current) {
       onChange?.(newValue);
+      
+      if (isAutoSave && onSave) {
+        if (saveDebounceTimerRef.current) {
+          clearTimeout(saveDebounceTimerRef.current);
+        }
+        saveDebounceTimerRef.current = setTimeout(async () => {
+          if (isSavingRef.current) return;
+          isSavingRef.current = true;
+          try {
+            await onSave(newValue);
+            lastSavedContentRef.current = newValue;
+          } catch (e) {
+            console.error("Auto-save failed:", e);
+          } finally {
+            isSavingRef.current = false;
+          }
+        }, autoSaveDelay);
+      }
     }
   };
 
