@@ -332,11 +332,120 @@ function buildCompilerOptions(monaco: Monaco, filePath?: string) {
     baseUrl,
     paths: {
       "@/*": [srcBase],
-      // Also support ~/* as a common alias
       "~/*": [srcBase],
     },
     lib: ["dom", "esnext"],
   };
+}
+
+/** Diagnostic codes that are false positives in a WebContainer IDE environment
+ * where node_modules/@types are not available to Monaco's virtual FS. */
+const IGNORED_DIAGNOSTIC_CODES = [
+  2307, // Cannot find module '...' or its corresponding type declarations
+  2304, // Cannot find name '...'
+  7016, // Could not find a declaration file for module
+  2786, // 'X' cannot be used as a JSX component (missing React types)
+  2322, // Type '...' is not assignable (prop type mismatches without types)
+  2339, // Property '...' does not exist on type
+  2345, // Argument of type '...' is not assignable to parameter of type
+  2571, // Object is of type 'unknown'
+  7006, // Parameter '...' implicitly has an 'any' type
+  17004, // Cannot use JSX unless '--jsx' flag is provided
+  2774, // This condition will always return true since this function is always defined
+  2554, // Expected N arguments, but got M
+  2532, // Object is possibly 'undefined'
+  2531, // Object is possibly 'null'
+  2488, // Type must have a '[Symbol.iterator]()' method that returns an iterator
+];
+
+let reactTypeStubRegistered = false;
+
+/**
+ * Inject a minimal React + JSX type stub into Monaco's extra libs.
+ * This prevents false "cannot be used as JSX component" errors when
+ * @types/react is not physically available in Monaco's virtual FS.
+ */
+function registerReactTypeStubs(monaco: Monaco) {
+  if (reactTypeStubRegistered) return;
+  reactTypeStubRegistered = true;
+
+  const reactDts = `
+declare module 'react' {
+  export type ReactNode = ReactChild | ReactFragment | ReactPortal | boolean | null | undefined;
+  export type ReactChild = ReactElement | string | number;
+  export type ReactFragment = {} | ReactNodeArray;
+  export interface ReactNodeArray extends Array<ReactNode> {}
+  export interface ReactPortal extends ReactElement { key: Key | null; children: ReactNode; }
+  export type Key = string | number;
+  export type Ref<T> = RefCallback<T> | RefObject<T> | null;
+  export type RefCallback<T> = (instance: T | null) => void;
+  export interface RefObject<T> { readonly current: T | null; }
+  export interface ReactElement<P = any> { type: any; props: P; key: Key | null; }
+  export type FC<P = {}> = FunctionComponent<P>;
+  export interface FunctionComponent<P = {}> {
+    (props: P): ReactElement<any> | null;
+    displayName?: string;
+  }
+  export type ComponentType<P = {}> = FunctionComponent<P>;
+  export function useState<S>(initialState: S | (() => S)): [S, Dispatch<SetStateAction<S>>];
+  export function useEffect(effect: EffectCallback, deps?: DependencyList): void;
+  export function useCallback<T extends Function>(callback: T, deps: DependencyList): T;
+  export function useMemo<T>(factory: () => T, deps: DependencyList | undefined): T;
+  export function useRef<T>(initialValue: T): MutableRefObject<T>;
+  export function useRef<T>(initialValue: T | null): RefObject<T>;
+  export function useRef<T = undefined>(): MutableRefObject<T | undefined>;
+  export function useContext<T>(context: Context<T>): T;
+  export function useReducer<R extends Reducer<any, any>>(reducer: R, initialState: ReducerState<R>): [ReducerState<R>, Dispatch<ReducerAction<R>>];
+  export type Dispatch<A> = (value: A) => void;
+  export type SetStateAction<S> = S | ((prevState: S) => S);
+  export type EffectCallback = () => (void | (() => void | undefined));
+  export type DependencyList = ReadonlyArray<unknown>;
+  export interface MutableRefObject<T> { current: T; }
+  export interface Context<T> { Provider: Provider<T>; Consumer: Consumer<T>; }
+  export type Provider<T> = ComponentType<{ value: T; children?: ReactNode }>;
+  export type Consumer<T> = ComponentType<{ children: (value: T) => ReactNode }>;
+  export type Reducer<S, A> = (prevState: S, action: A) => S;
+  export type ReducerState<R extends Reducer<any, any>> = R extends Reducer<infer S, any> ? S : never;
+  export type ReducerAction<R extends Reducer<any, any>> = R extends Reducer<any, infer A> ? A : never;
+  export function createContext<T>(defaultValue: T): Context<T>;
+  export function memo<P>(Component: FunctionComponent<P>): FunctionComponent<P>;
+  export function forwardRef<T, P = {}>(render: (props: P, ref: Ref<T>) => ReactElement | null): FunctionComponent<P & { ref?: Ref<T> }>;
+  export interface HTMLAttributes<T> extends AriaAttributes, DOMAttributes<T> { className?: string; id?: string; style?: CSSProperties; [key: string]: any; }
+  export interface AriaAttributes { [key: string]: any; }
+  export interface DOMAttributes<T> { children?: ReactNode; onClick?: (e: any) => void; onChange?: (e: any) => void; onSubmit?: (e: any) => void; [key: string]: any; }
+  export interface CSSProperties { [key: string]: any; }
+  export const Fragment: unique symbol;
+  export const StrictMode: ComponentType<{ children?: ReactNode }>;
+  export const Suspense: ComponentType<{ children?: ReactNode; fallback?: ReactNode }>;
+  export default { useState, useEffect, useCallback, useMemo, useRef, useContext, createContext, memo, forwardRef, Fragment, StrictMode, Suspense };
+}
+
+declare module 'react/jsx-runtime' {
+  export function jsx(type: any, props: any, key?: any): any;
+  export function jsxs(type: any, props: any, key?: any): any;
+  export const Fragment: unique symbol;
+}
+
+declare namespace JSX {
+  interface Element {}
+  interface IntrinsicElements { [elemName: string]: any; }
+  interface ElementAttributesProperty { props: {}; }
+  interface ElementChildrenAttribute { children: {}; }
+}
+`;
+
+  monaco.languages.typescript.typescriptDefaults.addExtraLib(
+    reactDts,
+    "file:///node_modules/@types/react/index.d.ts",
+  );
+  monaco.languages.typescript.typescriptDefaults.addExtraLib(
+    reactDts,
+    "file:///node_modules/react/index.d.ts",
+  );
+  monaco.languages.typescript.javascriptDefaults.addExtraLib(
+    reactDts,
+    "file:///node_modules/@types/react/index.d.ts",
+  );
 }
 
 let emmetRegistered = false;
@@ -491,6 +600,8 @@ export default function CodeEditor({
     (monaco: Monaco) => {
       if (emmetEnabled) registerAllEmmet(monaco);
       registerThemes(monaco);
+      // Inject React type stubs early so JSX is understood from the first render
+      registerReactTypeStubs(monaco);
     },
     [emmetEnabled],
   );
@@ -525,21 +636,15 @@ export default function CodeEditor({
     monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
       noSemanticValidation: false,
       noSyntaxValidation: false,
-      diagnosticCodesToIgnore: [
-        2307, // Cannot find module '...' or its corresponding type declarations
-        2304, // Cannot find name '...'
-        7016, // Could not find a declaration file for module
-      ],
+      diagnosticCodesToIgnore: IGNORED_DIAGNOSTIC_CODES,
     });
     monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
       noSemanticValidation: false,
       noSyntaxValidation: false,
-      diagnosticCodesToIgnore: [
-        2307,
-        2304,
-        7016,
-      ],
+      diagnosticCodesToIgnore: IGNORED_DIAGNOSTIC_CODES,
     });
+    // Inject React type stubs so JSX elements don't show false red lines
+    registerReactTypeStubs(monaco);
 
     // ──────────────────────────────────────────────
     // Intercept "Go to Definition" for node_modules
