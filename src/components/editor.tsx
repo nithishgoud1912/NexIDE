@@ -286,6 +286,59 @@ interface EditorProps {
   onOpenFile?: (path: string, content: string) => void;
 }
 
+/**
+ * Derive the Monaco-compatible baseUrl and @/* path alias from a file path.
+ * WebContainer paths look like: "src/app/page.tsx" or "packages/ui/src/index.ts"
+ * We walk up the path segments to find the segment that contains "src" or
+ * a tsconfig.json neighbour, defaulting to the root if nothing is found.
+ */
+function deriveProjectRoot(filePath?: string): string {
+  if (!filePath) return "file:///";
+
+  // Normalize: strip leading slash so we always work with relative segments
+  const normalized = filePath.replace(/^\/+/, "");
+  const parts = normalized.split("/");
+
+  // Find the deepest ancestor that looks like a project root.
+  // Heuristic: the segment BEFORE a "src" directory is the project root.
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (parts[i] === "src") {
+      // Everything before index i is the project root
+      const rootParts = parts.slice(0, i);
+      const rootPath = rootParts.length > 0 ? rootParts.join("/") + "/" : "";
+      return `file:///${rootPath}`;
+    }
+  }
+
+  // Fallback: use the filesystem root
+  return "file:///";
+}
+
+function buildCompilerOptions(monaco: Monaco, filePath?: string) {
+  const baseUrl = deriveProjectRoot(filePath);
+  // @/* → <projectRoot>/src/*
+  const srcBase = baseUrl === "file:///" ? "file:///src/*" : `${baseUrl}src/*`;
+
+  return {
+    target: monaco.languages.typescript.ScriptTarget.ESNext,
+    allowNonTsExtensions: true,
+    moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+    module: monaco.languages.typescript.ModuleKind.CommonJS,
+    noEmit: true,
+    esModuleInterop: true,
+    jsx: monaco.languages.typescript.JsxEmit.ReactJSX,
+    allowJs: true,
+    typeRoots: ["node_modules/@types"],
+    baseUrl,
+    paths: {
+      "@/*": [srcBase],
+      // Also support ~/* as a common alias
+      "~/*": [srcBase],
+    },
+    lib: ["dom", "esnext"],
+  };
+}
+
 let emmetRegistered = false;
 
 function registerAllEmmet(monaco: Monaco) {
@@ -399,6 +452,17 @@ export default function CodeEditor({
     };
   }, []);
 
+  // Re-apply TypeScript compiler options (especially @/* path alias) whenever
+  // the active file changes — this handles multi-project workspaces where each
+  // project has its own src/ root (e.g., NetflixClone vs NexIDE).
+  useEffect(() => {
+    const monaco = monacoRef.current;
+    if (!monaco) return;
+    const opts = buildCompilerOptions(monaco, path);
+    monaco.languages.typescript.typescriptDefaults.setCompilerOptions(opts);
+    monaco.languages.typescript.javascriptDefaults.setCompilerOptions(opts);
+  }, [path]);
+
   useEffect(() => {
     if (!editorRef.current || !monacoRef.current) return;
     const editor = editorRef.current;
@@ -450,27 +514,32 @@ export default function CodeEditor({
       }
     }
 
-    const compilerOptions = {
-      target: monaco.languages.typescript.ScriptTarget.ESNext,
-      allowNonTsExtensions: true,
-      moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-      module: monaco.languages.typescript.ModuleKind.CommonJS,
-      noEmit: true,
-      esModuleInterop: true,
-      jsx: monaco.languages.typescript.JsxEmit.React,
-      reactNamespace: "React",
-      allowJs: true,
-      typeRoots: ["node_modules/@types"],
-      baseUrl: "file:///",
-      paths: { "@/*": ["file:///src/*"] },
-      lib: ["dom", "esnext"],
-    };
+    const compilerOptions = buildCompilerOptions(monaco, path);
     monaco.languages.typescript.typescriptDefaults.setCompilerOptions(
       compilerOptions,
     );
     monaco.languages.typescript.javascriptDefaults.setCompilerOptions(
       compilerOptions,
     );
+    // Allow Monaco to validate across models without strict module resolution errors
+    monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+      noSemanticValidation: false,
+      noSyntaxValidation: false,
+      diagnosticCodesToIgnore: [
+        2307, // Cannot find module '...' or its corresponding type declarations
+        2304, // Cannot find name '...'
+        7016, // Could not find a declaration file for module
+      ],
+    });
+    monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
+      noSemanticValidation: false,
+      noSyntaxValidation: false,
+      diagnosticCodesToIgnore: [
+        2307,
+        2304,
+        7016,
+      ],
+    });
 
     // ──────────────────────────────────────────────
     // Intercept "Go to Definition" for node_modules
